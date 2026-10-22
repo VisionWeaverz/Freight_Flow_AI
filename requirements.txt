@@ -1,0 +1,25 @@
+# Core & Web Framework
+streamlit>=1.30.0
+plotly>=5.18.0
+
+# Graph & Network Analysis
+networkx>=3.2.0
+
+# Machine Learning & Data Processing
+scikit-learn>=1.4.0
+pandas>=2.1.0
+numpy>=1.26.0
+
+# Database & ORM
+sqlalchemy>=2.0.0
+
+# Data Validation & Serialization
+pydantic>=2.6.0
+python-dotenv>=1.0.0
+
+# AI / LLM Integrations
+google-generativeai>=0.4.0
+requests>=2.31.0
+
+# Testing & Quality
+pytest>=8.0.0
