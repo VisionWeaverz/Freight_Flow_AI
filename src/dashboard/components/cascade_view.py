@@ -90,31 +90,45 @@ def render_cascade_view():
         actual_shp_id = shipment_id.split(" ")[0]
         
     with col_input2:
-        delay_hours = st.slider("Port Delay (Hours):", min_value=0.5, max_value=8.0, value=4.0, step=0.5)
-        
-    with col_input3:
         disruption_type = st.selectbox(
             "Disruption Type:",
             ["PORT_CONGESTION", "VESSEL_DELAY", "TRUCK_BREAKDOWN", "TRAFFIC_INCIDENT", "WAREHOUSE_BOTTLENECK"],
             index=0
         )
 
+    with col_input3:
+        delay_label = {
+            "PORT_CONGESTION": "Port Berth Delay (h):",
+            "VESSEL_DELAY": "Vessel Delay (h):",
+            "TRUCK_BREAKDOWN": "Breakdown Delay (h):",
+            "TRAFFIC_INCIDENT": "Highway Jam (h):",
+            "WAREHOUSE_BOTTLENECK": "Dock Delay (h):",
+        }.get(disruption_type, "Delay Duration (h):")
+        delay_hours = st.slider(delay_label, min_value=0.5, max_value=8.0, value=4.0, step=0.5)
+
     with col_btn:
         st.write("")
         st.write("")
         trigger = st.button("⚡ Run Cascade Analysis", type="primary", use_container_width=True)
 
-    # Default to SHP-1005 automatically on initial load if not computed yet
-    if trigger or "current_impact" not in st.session_state:
+    # Automatically recompute whenever consignment, delay slider, or disruption type changes
+    current_inputs = (actual_shp_id, delay_hours, disruption_type)
+    if trigger or st.session_state.get("cascade_inputs") != current_inputs:
         score, risk_level = predict_risk(actual_shp_id, new_delay_hours=delay_hours, congestion=0.75)
-        impact = compute_cascade_impact(actual_shp_id, added_delay_hours=delay_hours)
+        impact = compute_cascade_impact(actual_shp_id, added_delay_hours=delay_hours, disruption_type=disruption_type)
         
+        st.session_state["cascade_inputs"] = current_inputs
         st.session_state["current_impact"] = impact
         st.session_state["current_risk_score"] = score
         st.session_state["current_risk_level"] = risk_level
         st.session_state["current_shipment_id"] = actual_shp_id
         st.session_state["current_delay_hours"] = delay_hours
         st.session_state["current_disruption_type"] = disruption_type
+        # Invalidate cached plans so Tab 2 regenerates fresh multi-agent plans
+        if "negotiated_plans" in st.session_state:
+            del st.session_state["negotiated_plans"]
+        if "selected_plan" in st.session_state:
+            del st.session_state["selected_plan"]
 
     impact = st.session_state.get("current_impact")
     if impact:
@@ -137,10 +151,11 @@ def render_cascade_view():
                 delta_color="inverse"
             )
         with m3:
+            origin_name = "Port Berth" if disruption_type in ("PORT_CONGESTION", "VESSEL_DELAY") else ("Highway Fleet" if disruption_type in ("TRUCK_BREAKDOWN", "TRAFFIC_INCIDENT") else "Warehouse Dock")
             st.metric(
                 label="Cascaded Total Delay",
                 value=f"+{impact.total_cascaded_delay_hours:.1f} hrs",
-                delta=f"Initial: +{impact.initial_delay_hours:.1f}h at Port",
+                delta=f"Origin: +{impact.initial_delay_hours:.1f}h at {origin_name}",
                 delta_color="inverse"
             )
         with m4:

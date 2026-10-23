@@ -99,7 +99,8 @@ def query_shipment_bundle(shipment_id: str, db_path: Optional[str] = None) -> Di
 
 def build_cascade_graph(
     shipment_data: Dict[str, Any],
-    added_delay_hours: float
+    added_delay_hours: float,
+    disruption_type: str = "PORT_CONGESTION"
 ) -> Tuple[nx.DiGraph, CascadeImpact]:
     """Builds NetworkX DiGraph and evaluates sequential cascade impact."""
     shp = shipment_data["shipment"]
@@ -108,11 +109,21 @@ def build_cascade_graph(
 
     shipment_id = shp["shipment_id"]
 
+    is_port_disruption = disruption_type in ("PORT_CONGESTION", "VESSEL_DELAY")
+    is_truck_disruption = disruption_type in ("TRUCK_BREAKDOWN", "TRAFFIC_INCIDENT")
+    is_whs_disruption = disruption_type == "WAREHOUSE_BOTTLENECK"
+
     # 1. Port Berth Arrival Node
     berth_scheduled = parse_timestamp(shp["eta_port_berth"])
-    berth_projected = berth_scheduled + timedelta(hours=added_delay_hours)
+    if is_port_disruption:
+        port_delay = float(added_delay_hours)
+        berth_projected = berth_scheduled + timedelta(hours=port_delay)
+        port_status = "ON_TIME" if port_delay <= 0.0 else ("BREACHED" if port_delay >= 6.0 else "DELAYED")
+    else:
+        port_delay = 0.0
+        berth_projected = berth_scheduled
+        port_status = "ON_TIME"
 
-    port_status = "ON_TIME" if added_delay_hours <= 0.0 else "DELAYED"
     port_node = CascadeNode(
         node_id=f"PORT_{shipment_id}",
         node_type="PORT",
@@ -120,32 +131,46 @@ def build_cascade_graph(
         status=port_status,
         scheduled_time=berth_scheduled.isoformat(),
         actual_or_projected_time=berth_projected.isoformat(),
-        delay_hours=round(added_delay_hours, 2),
+        delay_hours=round(port_delay, 2),
         details={
             "origin_port": shp.get("origin_port"),
             "port_congestion_index": shp.get("port_congestion_index", 0.5),
-            "added_delay_hours": round(added_delay_hours, 2)
+            "added_delay_hours": round(port_delay, 2),
+            "disruption_type": disruption_type
         }
     )
 
     # 2. Truck Pickup Node
     pickup_scheduled = parse_timestamp(trk["scheduled_pickup_time"])
-    driver_wait_seconds = max(0.0, (berth_projected - pickup_scheduled).total_seconds())
-    driver_wait_hours = driver_wait_seconds / 3600.0
-
     max_wait_allowed = float(trk["max_driver_wait_hours_allowed"])
     driver_rate_per_hr = float(trk["driver_waiting_cost_per_hr"])
+    nominal_transit_hours = float(trk["transit_time_hours"])
 
-    driver_wait_exceeded = driver_wait_hours > max_wait_allowed
-    if driver_wait_exceeded:
+    if is_port_disruption:
+        driver_wait_seconds = max(0.0, (berth_projected - pickup_scheduled).total_seconds())
+        driver_wait_hours = driver_wait_seconds / 3600.0
+        driver_wait_exceeded = driver_wait_hours > max_wait_allowed
+        waiting_penalty = driver_wait_hours * driver_rate_per_hr if driver_wait_exceeded else 0.0
+        truck_status = "BREACHED" if driver_wait_exceeded else ("DELAYED" if driver_wait_hours > 0.0 else "ON_TIME")
+        actual_pickup_time = max(pickup_scheduled, berth_projected)
+        actual_transit_hours = nominal_transit_hours
+        pickup_delay_hours = (actual_pickup_time - pickup_scheduled).total_seconds() / 3600.0
+    elif is_truck_disruption:
+        driver_wait_hours = float(added_delay_hours)
+        driver_wait_exceeded = driver_wait_hours > max_wait_allowed
         waiting_penalty = driver_wait_hours * driver_rate_per_hr
-        truck_status = "BREACHED"
-    else:
+        truck_status = "BREACHED" if (driver_wait_exceeded or disruption_type == "TRUCK_BREAKDOWN") else "DELAYED"
+        actual_pickup_time = pickup_scheduled
+        actual_transit_hours = nominal_transit_hours + float(added_delay_hours)
+        pickup_delay_hours = float(added_delay_hours)
+    else:  # is_whs_disruption
+        driver_wait_hours = 0.0
+        driver_wait_exceeded = False
         waiting_penalty = 0.0
-        truck_status = "DELAYED" if driver_wait_hours > 0.0 else "ON_TIME"
-
-    actual_pickup_time = max(pickup_scheduled, berth_projected)
-    pickup_delay_hours = (actual_pickup_time - pickup_scheduled).total_seconds() / 3600.0
+        truck_status = "ON_TIME"
+        actual_pickup_time = pickup_scheduled
+        actual_transit_hours = nominal_transit_hours
+        pickup_delay_hours = 0.0
 
     truck_node = CascadeNode(
         node_id=f"TRUCK_{shipment_id}",
@@ -161,7 +186,7 @@ def build_cascade_graph(
             "max_driver_wait_hours_allowed": max_wait_allowed,
             "driver_wait_exceeded": driver_wait_exceeded,
             "waiting_penalty_inr": round(waiting_penalty, 2),
-            "transit_time_hours": float(trk["transit_time_hours"])
+            "transit_time_hours": actual_transit_hours
         }
     )
 
@@ -174,30 +199,37 @@ def build_cascade_graph(
     )
 
     # 3. Warehouse Delivery Node
-    transit_hours = float(trk["transit_time_hours"])
-    whs_projected_arrival = actual_pickup_time + timedelta(hours=transit_hours)
-
+    whs_projected_arrival = actual_pickup_time + timedelta(hours=actual_transit_hours)
     slot_scheduled = parse_timestamp(whs["scheduled_slot_time"])
     max_buffer_minutes = float(whs["max_buffer_minutes"])
     slot_buffer_cutoff = slot_scheduled + timedelta(minutes=max_buffer_minutes)
-
-    slot_missed = whs_projected_arrival > slot_buffer_cutoff
     missed_slot_penalty_rate = float(whs["missed_slot_penalty_inr"])
     overtime_cost_per_hr = float(whs["overtime_cost_per_hr"])
 
-    if slot_missed:
-        missed_slot_penalty = missed_slot_penalty_rate
-        overtime_seconds = max(0.0, (whs_projected_arrival - slot_buffer_cutoff).total_seconds())
-        overtime_hours = overtime_seconds / 3600.0
+    if is_whs_disruption:
+        whs_delay_hours = float(added_delay_hours)
+        slot_missed = whs_delay_hours > (max_buffer_minutes / 60.0)
+        missed_slot_penalty = missed_slot_penalty_rate if slot_missed else 0.0
+        overtime_hours = whs_delay_hours
         overtime_cost = overtime_hours * overtime_cost_per_hr
-        whs_status = "BREACHED"
+        whs_status = "BREACHED" if (slot_missed or whs_delay_hours >= 2.0) else "DELAYED"
+        dock_turnaround_hours = 1.0 + whs_delay_hours
     else:
-        missed_slot_penalty = 0.0
-        overtime_hours = 0.0
-        overtime_cost = 0.0
-        whs_status = "DELAYED" if whs_projected_arrival > slot_scheduled else "ON_TIME"
+        slot_missed = whs_projected_arrival > slot_buffer_cutoff
+        if slot_missed:
+            missed_slot_penalty = missed_slot_penalty_rate
+            overtime_seconds = max(0.0, (whs_projected_arrival - slot_buffer_cutoff).total_seconds())
+            overtime_hours = overtime_seconds / 3600.0
+            overtime_cost = overtime_hours * overtime_cost_per_hr
+            whs_status = "BREACHED"
+        else:
+            missed_slot_penalty = 0.0
+            overtime_hours = 0.0
+            overtime_cost = 0.0
+            whs_status = "DELAYED" if whs_projected_arrival > slot_scheduled else "ON_TIME"
 
-    whs_delay_hours = max(0.0, (whs_projected_arrival - slot_scheduled).total_seconds() / 3600.0)
+        whs_delay_hours = max(0.0, (whs_projected_arrival - slot_scheduled).total_seconds() / 3600.0)
+        dock_turnaround_hours = 2.0 if slot_missed else 1.0
 
     whs_node = CascadeNode(
         node_id=f"WHS_{shipment_id}",
@@ -333,20 +365,22 @@ def build_cascade_graph(
 def compute_cascade_impact(
     shipment_id: str,
     added_delay_hours: float,
+    disruption_type: str = "PORT_CONGESTION",
     db_path: Optional[str] = None
 ) -> CascadeImpact:
     """Exposed functional contract for Deliverable 2.
 
     Args:
         shipment_id: Target shipment identifier (e.g. 'SHP-1005')
-        added_delay_hours: Upstream port berth delay in hours
+        added_delay_hours: Disruption delay in hours
+        disruption_type: Disruption classification (e.g. PORT_CONGESTION, TRUCK_BREAKDOWN)
         db_path: Optional explicit database path
 
     Returns:
         CascadeImpact Pydantic model
     """
     shipment_data = query_shipment_bundle(shipment_id, db_path)
-    _, impact = build_cascade_graph(shipment_data, added_delay_hours)
+    _, impact = build_cascade_graph(shipment_data, added_delay_hours, disruption_type=disruption_type)
     return impact
 
 
@@ -361,7 +395,8 @@ class CascadeImpactAnalyzer:
         shipment_id = disruption.source_entity_id
         if "SHP" in shipment_id:
             try:
-                impact = compute_cascade_impact(shipment_id, disruption.delay_hours)
+                ev_type = disruption.event_type.value if hasattr(disruption.event_type, "value") else str(disruption.event_type)
+                impact = compute_cascade_impact(shipment_id, disruption.delay_hours, disruption_type=ev_type)
                 impact.disruption_event_id = disruption.event_id
                 return impact
             except Exception:

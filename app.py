@@ -9,9 +9,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# Ensure all dashboard modules reload cleanly when files are updated
+# Ensure all src modules reload cleanly when files are updated
 for mod_name in list(sys.modules.keys()):
-    if mod_name.startswith("src.dashboard"):
+    if mod_name.startswith("src.") or mod_name == "src":
         try:
             importlib.reload(sys.modules[mod_name])
         except Exception:

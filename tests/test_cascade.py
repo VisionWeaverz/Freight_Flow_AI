@@ -60,3 +60,36 @@ def test_compute_cascade_impact_zero_delay():
     assert impact.risk_level == "LOW"
     assert impact.nodes[0].status == "ON_TIME"
     assert impact.nodes[1].status == "ON_TIME"
+
+
+def test_compute_cascade_impact_truck_breakdown_shp_1001():
+    """Unit test for truck breakdown disruption: port stays on time, truck and downstream delay."""
+    impact = compute_cascade_impact("SHP-1001", added_delay_hours=3.5, disruption_type="TRUCK_BREAKDOWN")
+    assert impact.nodes[0].node_type == "PORT"
+    assert impact.nodes[0].status == "ON_TIME"
+    assert impact.nodes[0].delay_hours == 0.0
+
+    assert impact.nodes[1].node_type == "TRUCK"
+    assert impact.nodes[1].status in ("BREACHED", "DELAYED")
+    assert impact.nodes[1].delay_hours == 3.5
+
+    assert impact.nodes[2].node_type == "WAREHOUSE"
+    assert impact.nodes[3].node_type == "CUSTOMER"
+    assert impact.financial_risk_inr > 0
+
+
+def test_compute_cascade_impact_warehouse_bottleneck_shp_1001():
+    """Unit test for warehouse dock bottleneck: port and truck stay on time, dock and customer delay."""
+    impact = compute_cascade_impact("SHP-1001", added_delay_hours=4.0, disruption_type="WAREHOUSE_BOTTLENECK")
+    assert impact.nodes[0].status == "ON_TIME"
+    assert impact.nodes[0].delay_hours == 0.0
+
+    assert impact.nodes[1].status == "ON_TIME"
+    assert impact.nodes[1].delay_hours == 0.0
+
+    assert impact.nodes[2].node_type == "WAREHOUSE"
+    assert impact.nodes[2].status == "BREACHED"
+    assert impact.nodes[2].delay_hours == 4.0
+
+    assert impact.nodes[3].node_type == "CUSTOMER"
+    assert impact.financial_risk_inr > 0
