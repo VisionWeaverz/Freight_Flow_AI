@@ -181,10 +181,10 @@ def render_cascade_view():
                         <div style="font-size:12px; font-weight:700; color:{tag_color}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
                             {icons.get(node.node_type, '📍')} {node.node_type}
                         </div>
-                        <div style="font-size:18px; font-weight:800; color:var(--text-color, #0f172a); margin:4px 0;">
+                        <div style="font-size:18px; font-weight:800; color:inherit; margin:4px 0;">
                             {node.status}
                         </div>
-                        <div style="font-size:12px; color:var(--text-color, #64748b); opacity:0.85;">
+                        <div style="font-size:12px; color:inherit; opacity:0.8;">
                             Delay: <b>+{node.delay_hours:.1f}h</b>
                         </div>
                     </div>

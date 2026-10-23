@@ -33,19 +33,19 @@ def render_plan_comparator():
     with col1:
         is_sel = selected_category == PlanCategory.CHEAPEST.value
         border = "#22c55e" if is_sel else "rgba(128, 128, 128, 0.25)"
-        bg = "rgba(34, 197, 94, 0.12)" if is_sel else "var(--secondary-background-color, rgba(128, 128, 128, 0.06))"
+        bg = "rgba(34, 197, 94, 0.12)" if is_sel else "rgba(128, 128, 128, 0.08)"
         st.markdown(
             f"""
             <div style="background:{bg}; border:2px solid {border}; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
                 <span style="background:rgba(34, 197, 94, 0.18); color:#22c55e; border:1px solid rgba(34, 197, 94, 0.35); font-size:11px; font-weight:700; padding:3px 8px; border-radius:12px;">COST OPTIMIZED</span>
                 <h3 style="margin:8px 0 4px 0; color:#22c55e;">🟢 Cheapest Plan</h3>
-                <div style="font-size:26px; font-weight:800; color:var(--text-color, #0f172a);">₹ {cheapest.total_cost_inr:,.0f}</div>
-                <p style="font-size:13px; color:var(--text-color, #64748b); opacity:0.8; margin:2px 0 12px 0;">Saves ₹{max(0, impact.financial_risk_inr - cheapest.total_cost_inr):,.0f} vs. Disruption Damage</p>
-                <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:var(--text-color, #334155);">
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">⏱️ <b>Added Delay:</b> +{cheapest.total_delay_hours:.1f} hrs</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🛡️ <b>Reliability:</b> {cheapest.reliability_score * 100:.0f}%</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🚛 <b>Truck:</b> {cheapest.carrier_slot_id}</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🏬 <b>Dock:</b> {cheapest.warehouse_slot_id}</p>
+                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {cheapest.total_cost_inr:,.0f}</div>
+                <p style="font-size:13px; color:inherit; opacity:0.75; margin:2px 0 12px 0;">Saves ₹{max(0, impact.financial_risk_inr - cheapest.total_cost_inr):,.0f} vs. Disruption Damage</p>
+                <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:inherit;">
+                    <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> +{cheapest.total_delay_hours:.1f} hrs</p>
+                    <p style="margin:4px 0; color:inherit;">🛡️ <b>Reliability:</b> {cheapest.reliability_score * 100:.0f}%</p>
+                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> {cheapest.carrier_slot_id}</p>
+                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> {cheapest.warehouse_slot_id}</p>
                 </div>
             </div>
             """,
@@ -60,19 +60,19 @@ def render_plan_comparator():
     with col2:
         is_sel = selected_category == PlanCategory.FASTEST.value
         border = "#0ea5e9" if is_sel else "rgba(128, 128, 128, 0.25)"
-        bg = "rgba(14, 165, 233, 0.12)" if is_sel else "var(--secondary-background-color, rgba(128, 128, 128, 0.06))"
+        bg = "rgba(14, 165, 233, 0.12)" if is_sel else "rgba(128, 128, 128, 0.08)"
         st.markdown(
             f"""
             <div style="background:{bg}; border:2px solid {border}; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
                 <span style="background:rgba(14, 165, 233, 0.18); color:#0ea5e9; border:1px solid rgba(14, 165, 233, 0.35); font-size:11px; font-weight:700; padding:3px 8px; border-radius:12px;">SPEED PRIORITY</span>
                 <h3 style="margin:8px 0 4px 0; color:#0ea5e9;">⚡ Fastest Plan</h3>
-                <div style="font-size:26px; font-weight:800; color:var(--text-color, #0f172a);">₹ {fastest.total_cost_inr:,.0f}</div>
-                <p style="font-size:13px; color:var(--text-color, #64748b); opacity:0.8; margin:2px 0 12px 0;">Immediate Velocity Recovery</p>
-                <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:var(--text-color, #334155);">
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">⏱️ <b>Added Delay:</b> +{fastest.total_delay_hours:.1f} hrs (0h Extra!)</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🛡️ <b>Reliability:</b> {fastest.reliability_score * 100:.0f}%</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🚛 <b>Truck:</b> {fastest.carrier_slot_id}</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🏬 <b>Dock:</b> {fastest.warehouse_slot_id}</p>
+                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {fastest.total_cost_inr:,.0f}</div>
+                <p style="font-size:13px; color:inherit; opacity:0.75; margin:2px 0 12px 0;">Immediate Velocity Recovery</p>
+                <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:inherit;">
+                    <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> +{fastest.total_delay_hours:.1f} hrs (0h Extra!)</p>
+                    <p style="margin:4px 0; color:inherit;">🛡️ <b>Reliability:</b> {fastest.reliability_score * 100:.0f}%</p>
+                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> {fastest.carrier_slot_id}</p>
+                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> {fastest.warehouse_slot_id}</p>
                 </div>
             </div>
             """,
@@ -87,19 +87,19 @@ def render_plan_comparator():
     with col3:
         is_sel = selected_category == PlanCategory.SAFEST.value
         border = "#f59e0b" if is_sel else "rgba(128, 128, 128, 0.25)"
-        bg = "rgba(245, 158, 11, 0.12)" if is_sel else "var(--secondary-background-color, rgba(128, 128, 128, 0.06))"
+        bg = "rgba(245, 158, 11, 0.12)" if is_sel else "rgba(128, 128, 128, 0.08)"
         st.markdown(
             f"""
             <div style="background:{bg}; border:2px solid {border}; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
                 <span style="background:rgba(245, 158, 11, 0.18); color:#f59e0b; border:1px solid rgba(245, 158, 11, 0.35); font-size:11px; font-weight:700; padding:3px 8px; border-radius:12px;">RECOMMENDED</span>
                 <h3 style="margin:8px 0 4px 0; color:#f59e0b;">🛡️ Safest Plan</h3>
-                <div style="font-size:26px; font-weight:800; color:var(--text-color, #0f172a);">₹ {safest.total_cost_inr:,.0f}</div>
-                <p style="font-size:13px; color:var(--text-color, #64748b); opacity:0.8; margin:2px 0 12px 0;">Maximum On-Time Resilience</p>
-                <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:var(--text-color, #334155);">
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">⏱️ <b>Added Delay:</b> Shift Realignment</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🛡️ <b>Reliability:</b> {safest.reliability_score * 100:.0f}% (Highest)</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🚛 <b>Truck:</b> {safest.carrier_slot_id}</p>
-                    <p style="margin:4px 0; color:var(--text-color, #334155);">🏬 <b>Dock:</b> {safest.warehouse_slot_id}</p>
+                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {safest.total_cost_inr:,.0f}</div>
+                <p style="font-size:13px; color:inherit; opacity:0.75; margin:2px 0 12px 0;">Maximum On-Time Resilience</p>
+                <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:inherit;">
+                    <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> Shift Realignment</p>
+                    <p style="margin:4px 0; color:inherit;">🛡️ <b>Reliability:</b> {safest.reliability_score * 100:.0f}% (Highest)</p>
+                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> {safest.carrier_slot_id}</p>
+                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> {safest.warehouse_slot_id}</p>
                 </div>
             </div>
             """,

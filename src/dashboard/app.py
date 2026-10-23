@@ -107,13 +107,13 @@ st.markdown(
     [data-testid="stTabs"] [role="tab"],
     [data-testid="stTab"] {
         height: 48px !important;
-        background: var(--secondary-background-color, #ffffff) !important;
+        background: rgba(128, 128, 128, 0.08) !important;
         border: 1.5px solid rgba(128, 128, 128, 0.25) !important;
         border-radius: 50px !important; /* Full pill shape */
         padding: 0 24px !important;
         font-weight: 600 !important;
         font-size: 0.95rem !important;
-        color: var(--text-color, #334155) !important;
+        color: inherit !important;
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
         display: inline-flex !important;
@@ -154,7 +154,8 @@ st.markdown(
     /* Text color inside inactive tab */
     [data-testid="stTabs"] [role="tab"][aria-selected="false"] p,
     [data-testid="stTabs"] [role="tab"][aria-selected="false"] div {
-        color: var(--text-color, #334155) !important;
+        color: inherit !important;
+        opacity: 0.9 !important;
     }
 
     /* Completely remove the attached underline indicator */
