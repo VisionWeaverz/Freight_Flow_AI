@@ -28,11 +28,16 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Global Container Adjustments */
+    /* Global Container Adjustments with Top Header Clearance */
     .block-container {
-        padding-top: 1.2rem !important;
+        padding-top: 4.5rem !important; /* Ample breathing room below Streamlit navbar/header */
         padding-bottom: 2.5rem !important;
         max-width: 96% !important;
+    }
+
+    /* Hide distracting Deploy button if present */
+    .stAppDeployButton {
+        display: none !important;
     }
     
     /* Top Header Bar */
@@ -44,7 +49,8 @@ st.markdown(
         border-radius: 12px;
         padding: 18px 24px;
         color: #f8fafc;
-        margin-bottom: 20px;
+        margin-top: 0.5rem !important;
+        margin-bottom: 22px !important;
         box-shadow: 0 4px 15px -2px rgba(0, 0, 0, 0.2);
     }
     
