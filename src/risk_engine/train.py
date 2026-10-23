@@ -11,12 +11,28 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import sqlite3
-import numpy as np
-from typing import Tuple, Dict, Any, Optional
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score
-import joblib
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    from sklearn.ensemble import GradientBoostingClassifier
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import accuracy_score, roc_auc_score
+except ImportError:
+    GradientBoostingClassifier = None
+    train_test_split = None
+    accuracy_score = None
+    roc_auc_score = None
+
+try:
+    import joblib
+except ImportError:
+    try:
+        import pickle as joblib
+    except ImportError:
+        joblib = None
 
 from src.risk_engine.feature_pipeline import FeaturePipeline
 

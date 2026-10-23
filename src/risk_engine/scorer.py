@@ -12,8 +12,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import sqlite3
 from typing import Tuple, Optional, Dict, Any, List
-import numpy as np
-import joblib
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    import joblib
+except ImportError:
+    try:
+        import pickle as joblib
+    except ImportError:
+        joblib = None
 
 from src.common.schemas import RiskPrediction
 from src.risk_engine.feature_pipeline import FeaturePipeline
@@ -66,7 +76,7 @@ class RiskScorer:
 
     def load_model(self):
         """Loads trained scikit-learn model artifact, training a fallback if missing."""
-        if self.model_path and os.path.exists(self.model_path):
+        if self.model_path and os.path.exists(self.model_path) and joblib is not None:
             try:
                 self.model = joblib.load(self.model_path)
                 return
