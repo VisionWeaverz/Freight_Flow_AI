@@ -11,7 +11,10 @@ except ImportError:
 
 
 class ShipmentRecord(Base):
-    __tablename__ = "shipments"
+    # Table name is "shipment_records" (not "shipments") to avoid a schema
+    # conflict with the raw SQLite telemetry "shipments" table, which has a
+    # different column set used by the risk engine and cascade engine.
+    __tablename__ = "shipment_records"
 
     shipment_id = Column(String, primary_key=True, index=True) if Column else None
     origin = Column(String, nullable=False) if Column else None

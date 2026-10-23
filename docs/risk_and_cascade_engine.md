@@ -220,3 +220,232 @@ To run standalone deliverable checks:
 python3 risk_engine.py
 python3 cascade_graph.py
 ```
+
+---
+
+## 7. Audit Findings & Integration Fix (Person 2)
+
+> **Audit date:** 2026-10-22 | Branch: `main`
+> Changes applied by the Multi-Agent Systems & AI Reasoning engineer after a
+> full code audit against this specification.
+
+### 7.1 What the Audit Found
+
+Running the test suite against the repository revealed **2 failing tests** despite
+the documentation claiming all tests passed:
+
+```
+FAILED tests/test_cascade.py::test_compute_cascade_impact_shp_1005_four_hour_delay
+FAILED tests/test_cascade.py::test_compute_cascade_impact_zero_delay
+  FileNotFoundError: Database 'data/freightflow.db' does not exist.
+```
+
+Three root causes were identified:
+
+#### Root Cause 1 — Database schema naming conflict
+
+`src/database/models.py` declared `ShipmentRecord.__tablename__ = "shipments"` with
+ORM columns (`origin`, `destination`, `value_inr`).
+
+`src/database/seed_data.py::seed_telemetry_tables()` ran
+`CREATE TABLE IF NOT EXISTS shipments (...)` with the telemetry columns
+(`origin_port`, `destination_hub`, `cargo_value_inr`, …).
+
+Because `init_db()` called `Base.metadata.create_all()` **before**
+`seed_telemetry_tables()`, SQLAlchemy created the ORM schema first.
+SQLite's `CREATE TABLE IF NOT EXISTS` then silently no-op'd the telemetry
+`CREATE`, leaving the ORM schema in place. Every subsequent telemetry
+`INSERT` failed with *"table shipments has no column named origin_port"*.
+The database was therefore never actually populated.
+
+#### Root Cause 2 — Orchestrator not passing disruption features to risk scorer
+
+```python
+# Before (wrong — delay_hours and congestion defaulted to 0.0)
+risk_prediction = self.risk_scorer.predict_risk({"shipment_id": disruption.source_entity_id})
+```
+
+The risk scorer always received zero delay and zero congestion regardless of
+the actual disruption severity.
+
+#### Root Cause 3 — Orchestrator never reached the real cascade engine
+
+`CascadeImpactAnalyzer.compute_impact()` routes to `compute_cascade_impact()`
+only when `"SHP" in shipment_id`. The orchestrator passed
+`source_entity_id = "PORT_JNPT_BERTH_2"` — so the full 4-node penalty
+calculation was never invoked. The pipeline always returned a crude
+`delay_hours × ₹2,500` approximation.
+
+---
+
+### 7.2 Files Changed
+
+Four minimal, targeted changes were made. No schemas were modified.
+
+#### `src/database/models.py` — rename ORM table
+
+```python
+# Before
+class ShipmentRecord(Base):
+    __tablename__ = "shipments"       # ← conflicted with telemetry table
+
+# After
+class ShipmentRecord(Base):
+    __tablename__ = "shipment_records"  # ← no longer conflicts
+```
+
+The `test_database_crud` test is unaffected — it only exercises
+`RecoveryPlanRecord` inside an in-memory SQLite engine.
+
+#### `src/database/seed_data.py` — rewrite `init_db()`
+
+New execution order inside `init_db()`:
+
+1. **`generate_data.init_db(db_path)`** — calls the project-root
+   `generate_data.py` script which owns the correct unified `shipments`
+   schema (contains both ORM-friendly columns and all telemetry columns).
+   Uses `DROP TABLE IF EXISTS` before `CREATE TABLE`, so the schema is
+   always guaranteed correct on every run.
+2. **`generate_data.populate_data(conn)`** — inserts SHP-1005 anchor row
+   and 1,200 synthetic cohort records.
+3. **`Base.metadata.create_all(bind=engine)`** — creates ORM-only tables
+   (`shipment_records`, `schedule_slots`, `disruptions`, `recovery_plans`).
+   Now runs *after* the telemetry tables, with no naming conflict.
+4. Seeds `schedule_slots` rows if absent.
+
+The `ShipmentRecord` import was also removed from `seed_data.py` since
+`init_db()` no longer inserts ORM shipment rows (handled by `generate_data.py`).
+
+#### `tests/conftest.py` — new file (session fixture)
+
+```python
+@pytest.fixture(scope="session", autouse=True)
+def ensure_freightflow_db():
+    """Creates data/freightflow.db with the correct unified schema."""
+    import generate_data
+    conn = generate_data.init_db(str(db_path))
+    generate_data.populate_data(conn)
+    conn.close()
+    # Sanity check: raises RuntimeError if SHP-1005 is missing
+```
+
+- `scope="session"` — DB is created once per `pytest` run, not per test.
+- `autouse=True` — cascade and risk-engine tests never need to import it.
+- Raises loudly if seeding fails — no broad exception swallowing.
+- Does not require a pre-existing developer database.
+
+#### `src/orchestrator.py` — two fixes
+
+**Fix 1 — pass real disruption features to risk scorer:**
+
+```python
+# Before
+risk_prediction = self.risk_scorer.predict_risk({"shipment_id": disruption.source_entity_id})
+
+# After
+risk_prediction = self.risk_scorer.predict_risk({
+    "shipment_id": disruption.source_entity_id,
+    "delay_hours": disruption.delay_hours,
+    "port_congestion_index": disruption.severity_level,
+})
+```
+
+**Fix 2 — route SHP-* disruptions through the real cascade engine:**
+
+```python
+def _compute_cascade(self, disruption: DisruptionEvent) -> CascadeImpact:
+    if disruption.source_entity_id.startswith("SHP-"):
+        try:
+            impact = compute_cascade_impact(
+                disruption.source_entity_id, disruption.delay_hours
+            )
+            impact.disruption_event_id = disruption.event_id
+            return impact
+        except (FileNotFoundError, ValueError):
+            pass  # DB absent or unknown shipment → fall through to BFS
+
+    # Generic BFS fallback for non-shipment entity IDs (ports, carriers, etc.)
+    graph = self.graph_builder.build_graph([])
+    return CascadeImpactAnalyzer(graph).compute_impact(disruption)
+```
+
+Only `FileNotFoundError` (DB absent) and `ValueError` (shipment not in DB)
+trigger the fallback — all other exceptions propagate so logic bugs stay
+visible.
+
+---
+
+### 7.3 Test Results Before & After
+
+| Test | Before fix | After fix |
+|------|-----------|-----------|
+| `test_coordinator_negotiation` | ✅ Pass | ✅ Pass |
+| `test_cascade_analyzer_disruption_event` | ✅ Pass | ✅ Pass |
+| `test_compute_cascade_impact_shp_1005_four_hour_delay` | ❌ **Fail** | ✅ **Pass** |
+| `test_compute_cascade_impact_zero_delay` | ❌ **Fail** | ✅ **Pass** |
+| `test_database_crud` | ✅ Pass | ✅ Pass |
+| `test_risk_scorer_prediction` | ✅ Pass | ✅ Pass |
+| `test_predict_risk_shp_1005_four_hour_delay` | ✅ Pass | ✅ Pass |
+| `test_predict_risk_nominal_conditions` | ✅ Pass | ✅ Pass |
+| `test_disruption_generator` | ✅ Pass | ✅ Pass |
+| `test_benchmark_runner_init` | ✅ Pass | ✅ Pass |
+| **Total** | **8 / 10** | **10 / 10** |
+
+---
+
+### 7.4 Verified Benchmark Output
+
+Running `compute_cascade_impact("SHP-1005", added_delay_hours=4.0)` after the fix
+produces the following, which matches the specification in Section 5 exactly:
+
+```
+[PORT      ] status=DELAYED    delay=4.0h
+[TRUCK     ] status=BREACHED   delay=3.0h
+[WAREHOUSE ] status=BREACHED   delay=2.0h
+[CUSTOMER  ] status=BREACHED   delay=0.5h
+
+Penalty Breakdown:
+  driver_waiting_penalty_inr      ₹1,500.00   ✅
+  missed_slot_penalty_inr         ₹12,500.00  ✅
+  warehouse_overtime_cost_inr     ₹2,250.00   ✅
+  customer_sla_penalty_inr        ₹1,500.00   ✅
+  total_financial_risk_inr        ₹17,750.00  ✅
+
+Risk Level: CRITICAL  ✅
+```
+
+Zero-delay scenario (`added_delay_hours=0.0`):
+
+```
+Financial risk: ₹0.00  ✅   Risk level: LOW  ✅
+Port node: ON_TIME  ✅       Truck node: ON_TIME  ✅
+```
+
+---
+
+### 7.5 How to Run
+
+**Initialise the database manually (one-time, or after a clean checkout):**
+```bash
+python generate_data.py
+```
+
+**Run the full test suite (database is auto-seeded by conftest.py):**
+```bash
+pytest tests/ -v
+```
+
+**Run the end-to-end CLI pipeline:**
+```bash
+python src/main.py
+```
+
+**Verify cascade engine standalone:**
+```bash
+python src/cascade/impact_analyzer.py
+```
+
+**Verify risk scorer standalone:**
+```bash
+python src/risk_engine/scorer.py
+```

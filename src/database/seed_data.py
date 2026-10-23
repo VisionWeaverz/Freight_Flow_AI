@@ -12,7 +12,7 @@ import sqlite3
 import random
 from datetime import datetime, timedelta
 from src.database.connection import engine, Base, SessionLocal
-from src.database.models import ShipmentRecord, ScheduleSlotRecord
+from src.database.models import ScheduleSlotRecord  # ShipmentRecord rows are seeded by generate_data.py
 from src.common.config import BASE_DIR
 
 DB_PATH = BASE_DIR / "data" / "freightflow.db"
@@ -187,62 +187,73 @@ def seed_telemetry_tables(db_file: str):
 
 
 def init_db():
+    """Initializes all database tables.
+
+    Execution order is important:
+    1. generate_data.main() runs first — it creates the unified 'shipments' table
+       (telemetry schema with both ORM-compatible and cascade/risk-engine columns)
+       along with 'truck_bookings' and 'warehouse_slots'. It uses DROP+CREATE so
+       the schema is always correct, and populates SHP-1005 plus 1,200 cohort rows.
+    2. Base.metadata.create_all() runs second — it creates ORM-only tables
+       ('shipment_records', 'schedule_slots', 'disruptions', 'recovery_plans').
+       Since 'shipments' is now 'shipment_records' in the ORM, there is no
+       table-name conflict.
+    3. ORM seed data (ScheduleSlotRecord entries) is inserted if absent.
+    """
+    import sys
+    sys.path.insert(0, str(PROJECT_ROOT))
+    import generate_data
+
+    # Step 1: Build telemetry tables with the correct unified schema
+    db_path_str = str(DB_PATH)
+    os.makedirs(os.path.dirname(db_path_str), exist_ok=True)
+    conn = generate_data.init_db(db_path_str)
+    generate_data.populate_data(conn)
+    conn.close()
+    print(f"Telemetry tables generated at: {db_path_str}")
+
+    # Step 2: Create ORM-only tables (shipment_records, schedule_slots, etc.)
     Base.metadata.create_all(bind=engine)
+
+    # Step 3: Seed ORM schedule_slots if absent
     db = SessionLocal()
-
-    if db.query(ShipmentRecord).count() == 0:
-        now = datetime.utcnow()
-        sample_shipment = ShipmentRecord(
-            shipment_id="SHP-IN-9081",
-            origin="Jawaharlal Nehru Port (JNPT)",
-            destination="Bhiwandi Central Fulfillment Hub",
-            cargo_type="Electronics & Automotive Components",
-            value_inr=4500000.0,
-            planned_departure=now + timedelta(hours=2),
-            planned_arrival=now + timedelta(hours=10),
-            status="IN_TRANSIT"
-        )
-        db.add(sample_shipment)
-
-        sample_slots = [
-            ScheduleSlotRecord(
-                slot_id="PORT-JNPT-B1",
-                entity_type="PORT",
-                entity_name="JNPT Berth 1",
-                start_time=now + timedelta(hours=2),
-                end_time=now + timedelta(hours=6),
-                capacity=100,
-                cost_inr=5000.0
-            ),
-            ScheduleSlotRecord(
-                slot_id="TRUCK-FLEET-T10",
-                entity_type="CARRIER",
-                entity_name="BlueDart Heavy Freight",
-                start_time=now + timedelta(hours=6),
-                end_time=now + timedelta(hours=10),
-                capacity=1,
-                cost_inr=3500.0
-            ),
-            ScheduleSlotRecord(
-                slot_id="WH-BHIWANDI-D3",
-                entity_type="WAREHOUSE",
-                entity_name="Bhiwandi Bay 3",
-                start_time=now + timedelta(hours=10),
-                end_time=now + timedelta(hours=14),
-                capacity=1,
-                cost_inr=2500.0
-            )
-        ]
-        db.add_all(sample_slots)
-        db.commit()
-        print("Database initialized with seed supply chain records.")
-    else:
-        print("Database already contains records.")
-    db.close()
-
-    # Seed telemetry tables for ML & cascade graph
-    seed_telemetry_tables(str(DB_PATH))
-    print(f"Telemetry tables seeded in: {DB_PATH}")
+    try:
+        if db.query(ScheduleSlotRecord).count() == 0:
+            now = datetime.utcnow()
+            sample_slots = [
+                ScheduleSlotRecord(
+                    slot_id="PORT-JNPT-B1",
+                    entity_type="PORT",
+                    entity_name="JNPT Berth 1",
+                    start_time=now + timedelta(hours=2),
+                    end_time=now + timedelta(hours=6),
+                    capacity=100,
+                    cost_inr=5000.0
+                ),
+                ScheduleSlotRecord(
+                    slot_id="TRUCK-FLEET-T10",
+                    entity_type="CARRIER",
+                    entity_name="BlueDart Heavy Freight",
+                    start_time=now + timedelta(hours=6),
+                    end_time=now + timedelta(hours=10),
+                    capacity=1,
+                    cost_inr=3500.0
+                ),
+                ScheduleSlotRecord(
+                    slot_id="WH-BHIWANDI-D3",
+                    entity_type="WAREHOUSE",
+                    entity_name="Bhiwandi Bay 3",
+                    start_time=now + timedelta(hours=10),
+                    end_time=now + timedelta(hours=14),
+                    capacity=1,
+                    cost_inr=2500.0
+                ),
+            ]
+            db.add_all(sample_slots)
+            db.commit()
+            print("ORM schedule slot records seeded.")
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
