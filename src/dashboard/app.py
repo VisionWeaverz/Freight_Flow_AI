@@ -84,30 +84,83 @@ st.markdown(
         color: #4ade80;
     }
 
-    /* Modern Top Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        border-bottom: 2px solid #e2e8f0;
-        padding-bottom: 4px;
-        margin-bottom: 18px;
+    /* ─────────────────────────────────────────────────────────────
+       Modern Floating Separated Button Navigation Bar (Streamlit 1.66)
+       ───────────────────────────────────────────────────────────── */
+    [data-testid="stTabs"] [role="tablist"] {
+        display: flex !important;
+        gap: 16px !important;
+        border-bottom: none !important;
+        background: transparent !important;
+        padding: 8px 4px 20px 4px !important;
+        margin-bottom: 12px !important;
+        border: none !important;
     }
 
-    .stTabs [data-baseweb="tab"] {
-        height: 46px;
-        background-color: transparent;
-        border-radius: 8px 8px 0 0;
-        padding: 6px 20px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        color: #64748b;
-        border: none;
-        transition: all 0.2s ease-in-out;
+    /* Individual Floating Button Island */
+    [data-testid="stTabs"] [role="tab"],
+    [data-testid="stTab"] {
+        height: 48px !important;
+        background: #ffffff !important;
+        border: 1.5px solid #e2e8f0 !important;
+        border-radius: 50px !important; /* Full pill shape */
+        padding: 0 24px !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        color: #334155 !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+        margin: 0 !important;
     }
 
-    .stTabs [aria-selected="true"] {
-        background-color: rgba(14, 116, 144, 0.08) !important;
-        color: #0e7490 !important;
-        border-bottom: 3px solid #0e7490 !important;
+    /* Floating Hover Lift Effect */
+    [data-testid="stTabs"] [role="tab"]:hover,
+    [data-testid="stTab"]:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14) !important;
+        border-color: #0284c7 !important;
+        color: #0284c7 !important;
+        background: #f8fafc !important;
+    }
+
+    /* Active Selected Floating Pill with Gradient & Glow */
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"],
+    [data-testid="stTabs"] [role="tab"][data-selected="true"],
+    [data-testid="stTab"][aria-selected="true"] {
+        background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+        color: #ffffff !important;
+        border: 1.5px solid #0284c7 !important;
+        box-shadow: 0 8px 24px rgba(2, 132, 199, 0.45), 0 3px 8px rgba(2, 132, 199, 0.25) !important;
+        transform: translateY(-3px) !important;
+    }
+
+    /* Text color inside active tab */
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] p,
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] div,
+    [data-testid="stTabs"] [role="tab"][data-selected="true"] p {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+
+    /* Text color inside inactive tab */
+    [data-testid="stTabs"] [role="tab"][aria-selected="false"] p,
+    [data-testid="stTabs"] [role="tab"][aria-selected="false"] div {
+        color: #334155 !important;
+    }
+
+    /* Completely remove the attached underline indicator */
+    .react-aria-SelectionIndicator,
+    [data-testid="stTabs"] .react-aria-SelectionIndicator,
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"],
+    [data-testid="stTabs"] hr {
+        display: none !important;
+        height: 0px !important;
+        opacity: 0 !important;
+        border: none !important;
     }
     </style>
     """,
