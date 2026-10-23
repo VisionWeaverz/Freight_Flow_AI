@@ -1,5 +1,13 @@
 """FreightFlow AI - Streamlit Dashboard Entry Point."""
 
+import sys
+from pathlib import Path
+
+# Add project root to sys.path so 'src' and modules are discoverable
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import streamlit as st
 from src.dashboard.components.cascade_view import render_cascade_view
 from src.dashboard.components.plan_comparator import render_plan_comparator
