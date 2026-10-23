@@ -60,10 +60,11 @@ def render_metrics_view():
                 barmode='group',
                 height=280,
                 margin=dict(l=20, r=20, t=40, b=20),
-                plot_bgcolor="rgba(245, 247, 250, 0.6)",
+                plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_delay, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_delay, use_container_width=True, theme="streamlit", config={"displayModeBar": False})
 
         with c2:
             fig_cost = go.Figure(data=[
@@ -77,10 +78,11 @@ def render_metrics_view():
                 barmode='group',
                 height=280,
                 margin=dict(l=20, r=20, t=40, b=20),
-                plot_bgcolor="rgba(245, 247, 250, 0.6)",
+                plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_cost, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_cost, use_container_width=True, theme="streamlit", config={"displayModeBar": False})
 
         # Detailed Log Table
         with st.expander("📋 View Raw 50-Run Simulation Trials Log", expanded=False):

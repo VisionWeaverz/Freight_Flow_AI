@@ -18,13 +18,13 @@ def build_plotly_cascade_diagram(nodes):
     hover_text = []
 
     color_map = {
-        "BREACHED": "#d32f2f",  # Vibrant Red
-        "DELAYED": "#f57c00",   # Amber / Orange
-        "ON_TIME": "#2e7d32",   # Forest Green
+        "BREACHED": "#ef4444",  # High-contrast Modern Red
+        "DELAYED": "#f59e0b",   # Amber / Orange
+        "ON_TIME": "#10b981",   # Forest Green
     }
 
     for node in nodes:
-        c = color_map.get(node.status, "#757575")
+        c = color_map.get(node.status, "#64748b")
         node_colors.append(c)
         node_symbols.append("square")
         node_text.append(f"<b>{node.node_type}</b><br>{node.status}<br>(+{node.delay_hours:.1f}h)")
@@ -42,7 +42,7 @@ def build_plotly_cascade_diagram(nodes):
             arrowhead=3,
             arrowsize=1.5,
             arrowwidth=3,
-            arrowcolor="#90a4ae"
+            arrowcolor="#94a3b8"
         )
 
     # Add milestone node cards
@@ -51,10 +51,10 @@ def build_plotly_cascade_diagram(nodes):
         y=y_pos,
         mode="markers+text",
         marker=dict(
-            size=60,
+            size=64,
             color=node_colors,
             symbol="square",
-            line=dict(width=2, color="#ffffff")
+            line=dict(width=2, color="rgba(255, 255, 255, 0.6)")
         ),
         text=node_text,
         textposition="middle center",
@@ -68,7 +68,7 @@ def build_plotly_cascade_diagram(nodes):
         margin=dict(l=20, r=20, t=10, b=10),
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.4, 6.1]),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.7, 1.3]),
-        plot_bgcolor="rgba(245, 247, 250, 0.6)",
+        plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
     return fig
@@ -161,14 +161,32 @@ def render_cascade_view():
         for node, col in zip(impact.nodes, node_cols):
             with col:
                 is_brk = node.status == "BREACHED"
-                bg_color = "#fef2f2" if is_brk else "#fefce8"
-                txt_color = "#b91c1c" if is_brk else "#b45309"
+                is_ontime = node.status == "ON_TIME"
+                if is_brk:
+                    bg_color = "rgba(239, 68, 68, 0.12)"
+                    border_color = "rgba(239, 68, 68, 0.45)"
+                    tag_color = "#ef4444"
+                elif is_ontime:
+                    bg_color = "rgba(34, 197, 94, 0.12)"
+                    border_color = "rgba(34, 197, 94, 0.45)"
+                    tag_color = "#22c55e"
+                else:  # DELAYED
+                    bg_color = "rgba(245, 158, 11, 0.12)"
+                    border_color = "rgba(245, 158, 11, 0.45)"
+                    tag_color = "#f59e0b"
+
                 st.markdown(
                     f"""
-                    <div style="background:{bg_color}; border:1px solid {txt_color}; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
-                        <div style="font-size:13px; font-weight:700; color:{txt_color};">{icons.get(node.node_type, '📍')} {node.node_type}</div>
-                        <div style="font-size:18px; font-weight:800; margin:4px 0;">{node.status}</div>
-                        <div style="font-size:12px; color:#475569;">Delay: +{node.delay_hours:.1f}h</div>
+                    <div style="background:{bg_color}; border:1.5px solid {border_color}; border-radius:10px; padding:12px 14px; margin-bottom:8px; box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+                        <div style="font-size:12px; font-weight:700; color:{tag_color}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
+                            {icons.get(node.node_type, '📍')} {node.node_type}
+                        </div>
+                        <div style="font-size:18px; font-weight:800; color:var(--text-color, #0f172a); margin:4px 0;">
+                            {node.status}
+                        </div>
+                        <div style="font-size:12px; color:var(--text-color, #64748b); opacity:0.85;">
+                            Delay: <b>+{node.delay_hours:.1f}h</b>
+                        </div>
                     </div>
                     """,
                     unsafe_allow_html=True
