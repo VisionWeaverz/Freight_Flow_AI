@@ -1,22 +1,31 @@
 """Prompt templates for LLM event extraction and recovery plan explanation."""
 
-PLAN_EXPLANATION_PROMPT = """
-You are FreightFlow AI's Recovery Explainer. 
-Explain the chosen recovery plan in concise, professional terms for human logistics supervisors.
+PLAN_EXPLANATION_PROMPT = """You are FreightFlow AI's Senior Operational Recovery Advisor.
+Provide a concise, focused executive rationale for the selected recovery plan.
+Keep it short, on-point, and structured with bullet points. Do NOT write long essays or walls of text.
+Do NOT wrap the output in markdown code blocks (no backticks).
 
-Disruption Event:
+Disruption Context:
 {disruption_details}
 
-Selected Recovery Plan ({plan_category}):
-- Total Cost: ₹{total_cost_inr}
-- Expected Delay: {delay_hours} hours
-- Reliability Score: {reliability_score}
+Selected Recovery Plan: {plan_category} Plan
+- Total Recovery Cost: ₹{total_cost_inr}
+- Transit Delay Offset: +{delay_hours} hours
+- Execution Reliability: {reliability_score}
+- Resource Allocation: Port {port_slot_id}, Carrier {carrier_slot_id}, Warehouse Dock {warehouse_slot_id}
 - Cost Breakdown: {cost_breakdown}
 
-Explain:
-1. Why this plan is optimal for this operational scenario.
-2. The trade-offs made between port berth availability, trucking wait times, and warehouse bay slots.
-3. Recommended next action for the logistics operator.
+Format your output EXACTLY as follows:
+
+#### 🎯 Why {plan_category} Plan & Decision Rationale
+- **Decision Taken**: 1-2 sentences on how the multi-agent decision was made across port, carrier, and warehouse resources.
+- **Why Choose This**: 1-2 sentences on the exact operational/contractual conditions when the supervisor should choose this plan.
+
+#### ✅ Pros
+- 2-3 concise, high-impact bullet points highlighting key benefits (e.g. cost savings, delay mitigation, or reliability certainty).
+
+#### ⚠️ Cons
+- 2 concise bullet points highlighting key trade-offs or operational risks (e.g. added delay, carrier premium, or schedule flexibility requirements).
 """
 
 TEXT_TO_EVENT_PROMPT = """

@@ -63,6 +63,11 @@ def test_heuristic_explanation_all_categories(sample_disruption, sample_plan):
         exp = explainer.explain_plan(sample_disruption, sample_plan)
         assert len(exp) > 50
         assert sample_plan.category.value.lower() in exp.lower()
+        assert "pros" in exp.lower()
+        assert "cons" in exp.lower()
+        assert "decision rationale" in exp.lower()
+        assert "decision taken" in exp.lower()
+        assert "why choose this" in exp.lower()
 
 
 def test_custom_question_fallback(sample_disruption, sample_plan):
