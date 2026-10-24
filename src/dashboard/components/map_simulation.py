@@ -7,7 +7,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-from src.dashboard.components.scenario import evaluate_scenario, shipment_catalog
+from src.dashboard.components.scenario import evaluate_scenario
 
 ASSETS = Path(__file__).with_name("simulation_assets")
 DISRUPTIONS = {
@@ -123,24 +123,11 @@ def render_map_simulation():
     shipment_id = bundle["shipment"]["shipment_id"]
     disruption_type, delay = scenario["disruption_type"], scenario["delay_hours"]
     st.caption(f"Shared scenario: {shipment_id} · {disruption_type.replace('_', ' ').title()} · +{delay:.1f}h. Costs match Operations and Recovery & Approval. Vehicle positions are simulated.")
-    catalog = shipment_catalog()
-    comparison_ids = st.multiselect("Additional ships / consignments to compare", list(catalog),
-        format_func=catalog.get, key="map_comparison_ships", max_selections=5,
-        help="The active shipment is always displayed. Add up to five others. Each is evaluated independently with the same disruption and delay, using its own bookings and tariffs.")
     payload = build_replay_payload(bundle, disruption_type, delay, scenario=scenario)
-    fleet = []
-    rows = []
-    for sid in [shipment_id] + [sid for sid in comparison_ids if sid != shipment_id]:
-        result = scenario if sid == shipment_id else evaluate_scenario(sid, disruption_type, delay)
-        replay = payload if sid == shipment_id else build_replay_payload(result["bundle"], disruption_type, delay, scenario=result)
-        rows.append({"Shipment": sid, "Unmitigated exposure (₹)": result["impact"].financial_risk_inr,
-                     **{p.category.value.title() + " operating fee (₹)": p.total_cost_inr for p in result["plans"]}})
-        if sid != shipment_id:
-            fleet.append({key: value for key, value in replay.items() if key != "fleet"})
-    payload["fleet"] = fleet
-    payload["end"] = max([payload["end"]] + [entry["end"] for entry in fleet])
+    rows = [{"Shipment": shipment_id, "Unmitigated exposure (₹)": scenario["impact"].financial_risk_inr,
+             **{p.category.value.title() + " operating fee (₹)": p.total_cost_inr for p in scenario["plans"]}}]
     template = (ASSETS / "replay.html").read_text()
     serialized = json.dumps(payload).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     components.html(template.replace("__REPLAY_DATA__", serialized), height=900, scrolling=False)
     st.dataframe(rows, hide_index=True, use_container_width=True)
-    st.caption("Every price above is calculated once from the shared scenario and applied tariffs. Recovery prices are operating fees, excluding residual SLA penalties. Additional shipments are independent comparisons aligned by elapsed replay time, not a joint fleet optimization. Facility markers and vessel approach are illustrative; routes without stored road geometry are dashed. Basemaps require internet.")
+    st.caption("Every price above is calculated once from the shared scenario and applied tariffs. Recovery prices are operating fees, excluding residual SLA penalties. Facility markers and vessel approach are illustrative; routes without stored road geometry are dashed. Basemaps require internet.")

@@ -1,7 +1,6 @@
 # Geographic replay assets
 
-The fourth dashboard tab replays the active shipment and up to five additional
-shipments. Operations, Recovery & Approval, and the map use one shared scenario
+The fourth dashboard tab replays the active shipment. Operations, Recovery & Approval, and the map use one shared scenario
 selector above the tabs. `scenario.py` reads a fresh shipment/pricing snapshot on
 each rerun and computes exposure and plans once for all views. Changing shipment,
 disruption, delay, bookings, or tariffs invalidates the old approval and explanations.
@@ -36,9 +35,6 @@ operating fees exclude residual delivery penalties; they are not labelled total
 landed costs or guaranteed savings.
 
 Controls: choose the active consignment, disruption, and duration above the tabs.
-Use the map multiselect to add independent shipment comparisons. Each uses its own
-bookings and applied tariffs with the same disruption/duration; comparisons are
-aligned by elapsed time and are not a joint fleet allocation simulation.
 Play/Pause, Step, Replay,
 or scrub below it. Choose Road/Satellite and Corridor/Port/Follow Truck views.
 Click facilities or vehicles for details. Click Cheapest/Fastest/Safest to preview
