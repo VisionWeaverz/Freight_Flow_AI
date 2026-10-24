@@ -57,7 +57,12 @@ def render_human_approval():
         st.session_state["last_explained_category"] = current_category
 
     rationale_counter = st.session_state.get("rationale_counter", 0)
-    exp_cache_key = f"explanation_{shipment_id}_{disruption_type_str}_{delay_hours:.1f}_{current_category}_{rationale_counter}"
+    plan_signature = (
+        plan.carrier_slot_id, plan.port_slot_id, plan.warehouse_slot_id,
+        plan.total_cost_inr, plan.total_delay_hours, plan.reliability_score,
+        tuple(sorted(plan.cost_breakdown.items())), impact.financial_risk_inr,
+    )
+    exp_cache_key = f"explanation_{shipment_id}_{disruption_type_str}_{delay_hours:.1f}_{current_category}_{rationale_counter}_{plan_signature}"
 
     # Generate or retrieve cached explanation
     if exp_cache_key not in st.session_state or st.session_state.get("force_regenerate_explanation"):
@@ -69,7 +74,7 @@ def render_human_approval():
             st.session_state["last_explainer_model"] = explainer.last_model_used
             st.session_state["force_regenerate_explanation"] = False
     else:
-        explanation = st.session_state.get("active_explanation") or st.session_state[exp_cache_key]
+        explanation = st.session_state[exp_cache_key]
 
     source_used = st.session_state.get("last_explainer_source", explainer.last_source)
     model_used = st.session_state.get("last_explainer_model") or explainer.last_model_used or explainer.model

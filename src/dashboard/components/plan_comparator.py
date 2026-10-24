@@ -93,7 +93,7 @@ def get_human_plan_attributes(plan, impact, cat: PlanCategory, disruption_type: 
             dock_desc = "Pre-booked dock door with dedicated equipment guarantees 100% bay clearance certainty"
         else:
             dock_title = "Next-Morning Intake Bay (08:00 AM)"
-            dock_desc = "Offloads with regular day-shift crew; waives ₹1,800/hr evening overtime labor fees"
+            dock_desc = "Offloads with regular day-shift crew; avoids evening overtime labor fees"
     elif is_road:
         if cat == PlanCategory.FASTEST or "OVERTIME" in w_slot:
             dock_title = "Priority Overtime Bay (Evening Shift)"

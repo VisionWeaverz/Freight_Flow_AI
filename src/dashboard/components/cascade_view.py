@@ -5,6 +5,7 @@ from datetime import datetime
 import plotly.graph_objects as go
 from src.cascade.impact_analyzer import compute_cascade_impact
 from src.risk_engine.scorer import predict_risk
+from src.database.rate_manager import is_custom_pricing_active
 
 
 def build_plotly_cascade_diagram(nodes):
@@ -163,11 +164,15 @@ def render_cascade_view():
                 delta=f"ML Probability: {st.session_state.get('current_risk_score', 0.85)*100:.0f}%",
                 delta_color="inverse" if impact.risk_level in ("HIGH", "CRITICAL") else "normal"
             )
+        is_custom_pricing = (
+            st.session_state.get("pricing_source") == "CUSTOM_CSV" or
+            is_custom_pricing_active(actual_shp_id)
+        )
         with m2:
             st.metric(
                 label="Total Financial ₹ at Risk",
                 value=f"₹ {impact.financial_risk_inr:,.2f}",
-                delta="Compounding Downstream Penalties",
+                delta="🟢 Custom CSV Rates Active" if is_custom_pricing else "🔵 Synthetic Default Rates",
                 delta_color="inverse"
             )
         with m3:
@@ -184,6 +189,10 @@ def render_cascade_view():
                 value=f"{len(impact.nodes)} Nodes Tracked",
                 delta="Port ➔ Truck ➔ WH ➔ SLA"
             )
+
+        st.markdown("#### 💰 Contract Tariffs & Pricing Matrix")
+        from src.dashboard.components.rate_card_uploader import render_rate_card_manager
+        render_rate_card_manager(target_shipment_id=actual_shp_id, show_header=False)
 
         # Plotly Diagram
         st.markdown("#### 🔗 4-Node Cascade Propagation Pipeline")

@@ -98,11 +98,22 @@ class CentralCoordinator:
         )
 
         # 2. Execute 3 Negotiation Rounds
+        # Read applied shipment tariffs, never an uploaded-but-unapplied CSV.
+        # Reset both agents each run so reusing a coordinator cannot retain old rates.
+        from src.database.rate_manager import get_active_pricing, SYNTHETIC_BASELINE_RATES
+        pricing = (
+            get_active_pricing(impact.shipment_id)
+            if impact.shipment_id else dict(SYNTHETIC_BASELINE_RATES)
+        )
+        driver_rate = float(pricing["driver_waiting_cost_per_hr"])
+        self.carrier_agent.driver_rate_per_hr = driver_rate
+        self.warehouse_agent.overtime_rate = float(pricing["overtime_cost_per_hr"])
+
         # Round 1: Autonomous baseline offers (individual cheaper preference)
         port_ctx_r1 = {"delay_hours": delays["port"], "reference_time": ref_time}
         carrier_ctx_r1 = {
             "delay_hours": delays["carrier"],
-            "driver_rate_per_hr": 500.0,
+            "driver_rate_per_hr": driver_rate,
             "reference_time": ref_time,
         }
         whs_ctx_r1 = {"delay_hours": delays["warehouse"], "reference_time": ref_time}
@@ -124,6 +135,7 @@ class CentralCoordinator:
         carrier_fb_r2 = {
             "delay_hours": delays["carrier"],
             "prefer_fast": prefer_speed,
+            "driver_rate_per_hr": driver_rate,
             "reference_time": ref_time,
         }
         whs_fb_r2 = {
@@ -146,6 +158,7 @@ class CentralCoordinator:
         carrier_fb_r3 = {
             "delay_hours": delays["carrier"],
             "prefer_fast": False,  # Evaluate cost-minimized driver wait
+            "driver_rate_per_hr": driver_rate,
             "reference_time": ref_time,
         }
         whs_fb_r3 = {
@@ -351,7 +364,9 @@ class CentralCoordinator:
                         "constraints_met": True,
                     })
         elif agent_role == "CARRIER":
-            for alt in self.carrier_agent.get_alternatives(dummy_event):
+            for alt in self.carrier_agent.get_alternatives(
+                dummy_event, driver_rate_per_hr=self.carrier_agent.driver_rate_per_hr
+            ):
                 is_rep = "REPLACEMENT" in alt["slot_id"]
                 key = "REPLACEMENT" if is_rep else "WAIT"
                 if key not in seen_types:

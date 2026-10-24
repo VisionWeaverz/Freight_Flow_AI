@@ -15,6 +15,8 @@ from src.dashboard.components.plan_comparator import render_plan_comparator
 from src.dashboard.components.human_approval import render_human_approval
 from src.dashboard.components.timeline_view import render_timeline_view
 from src.dashboard.components.metrics_view import render_metrics_view
+from src.dashboard.components.rate_card_uploader import render_rate_card_manager, render_sidebar_tariff_card
+from src.database.rate_manager import is_custom_pricing_active
 from src.common.config import GEMINI_API_KEY, GEMINI_MODEL, save_gemini_api_key
 from src.llm.explainer import LLMExplainer
 
@@ -252,6 +254,10 @@ def render_sidebar():
                 st.rerun()
 
         st.markdown("---")
+        # Rate Card & Pricing Source Management Status
+        render_sidebar_tariff_card()
+
+        st.markdown("---")
         st.markdown("#### ℹ️ Hackathon Guidance")
         st.markdown(
             """
@@ -274,6 +280,15 @@ def render_top_header():
     else:
         gemini_badge = '<span class="ff-badge ff-badge-amber">🤖 Heuristic AI Engine</span>'
 
+    is_custom_pricing = (
+        st.session_state.get("pricing_source") == "CUSTOM_CSV" or
+        is_custom_pricing_active()
+    )
+    if is_custom_pricing:
+        tariff_badge = '<span class="ff-badge ff-badge-green">💰 Custom CSV Rates Active</span>'
+    else:
+        tariff_badge = '<span class="ff-badge">Tariffs: Synthetic Defaults</span>'
+
     st.markdown(
         f"""
         <div class="ff-header">
@@ -284,6 +299,7 @@ def render_top_header():
             <div class="ff-badge-container">
                 <span class="ff-badge ff-badge-green">🟢 Gateway Active</span>
                 {gemini_badge}
+                {tariff_badge}
                 <span class="ff-badge">Team VisionWeavers</span>
                 <span class="ff-badge">1,200 Telemetry Consignments</span>
             </div>

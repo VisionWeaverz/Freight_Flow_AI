@@ -1,0 +1,5 @@
+rate_name,rate_inr,unit,description
+driver_waiting_cost_per_hr,850.0,₹/hr,Elevated highway driver detention fee
+sla_penalty_per_hour_inr,5000.0,₹/hr,Strict enterprise contractual delivery penalty
+missed_slot_penalty_inr,20000.0,₹ flat,Forfeited dock appointment penalty
+overtime_cost_per_hr,2500.0,₹/hr,Warehouse emergency overtime crew wage
