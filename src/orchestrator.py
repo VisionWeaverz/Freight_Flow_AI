@@ -21,7 +21,9 @@ class FreightFlowOrchestrator:
         self.coordinator = CentralCoordinator()
         self.llm_explainer = LLMExplainer()
 
-    def handle_disruption_pipeline(self, disruption: DisruptionEvent) -> Dict[str, Any]:
+    def handle_disruption_pipeline(
+        self, disruption: DisruptionEvent, include_llm: bool = True
+    ) -> Dict[str, Any]:
         """Runs the complete FreightFlow AI lifecycle:
         1. Predict risk level & severity — using actual delay_hours and congestion.
         2. Build cascade graph & calculate downstream INR at risk (computed once).
@@ -29,7 +31,7 @@ class FreightFlowOrchestrator:
            - Other IDs: uses generic BFS approximation for entity disruptions.
         3. Trigger multi-agent negotiation rounds with actual CascadeImpact.
         4. Synthesize Top 3 plans (Cheapest, Fastest, Safest) verified by Pareto dominance.
-        5. Explain top plan with LLM explainer.
+        5. Explain top plan with LLM explainer (only if include_llm=True).
         """
         if disruption.delay_hours < 0:
             raise ValueError(
@@ -50,8 +52,8 @@ class FreightFlowOrchestrator:
         plans = self.coordinator.run_recovery_negotiation(cascade_impact)
         is_feasible = any(p.is_feasible for p in plans) if plans else False
 
-        # 4. LLM Explanations
-        if plans and is_feasible:
+        # 4. LLM Explanations (skipped during bulk benchmarks for ultra-low latency)
+        if include_llm and plans and is_feasible:
             for plan in plans:
                 plan.llm_explanation = self.llm_explainer.explain_plan(disruption, plan)
 

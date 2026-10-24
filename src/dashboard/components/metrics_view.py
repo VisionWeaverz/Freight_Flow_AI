@@ -30,13 +30,29 @@ def render_metrics_view():
         st.divider()
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Avg Delay Reduction", f"{summary['avg_delay_reduction_pct']}%", delta="100% Velocity Recovery")
+            st.metric(
+                "Avg Delay Reduction",
+                f"{summary['avg_delay_reduction_pct']}%",
+                delta=f"-{summary.get('avg_delay_mitigated_hrs', 2.5):.1f}h Transit Mitigated"
+            )
         with col2:
-            st.metric("Driver Waiting Saved", f"{summary['avg_truck_waiting_saved_hrs']} hrs", delta="Per Trip Idle Reduction")
+            st.metric(
+                "Driver Waiting Saved",
+                f"{summary['avg_truck_waiting_saved_hrs']} hrs",
+                delta="Per Trip Idle Reduction"
+            )
         with col3:
-            st.metric("Avg Cost Saved", f"₹ {summary['avg_cost_saved_inr']:,.2f}", delta="Per Disruption Saved")
+            st.metric(
+                "Avg Cost Saved",
+                f"₹ {summary['avg_cost_saved_inr']:,.2f}",
+                delta="Per Disruption Saved"
+            )
         with col4:
-            st.metric("Conflicts Resolved", f"{summary['conflicts_resolved_pct']}%", delta="Feasible Multi-Party Plans")
+            st.metric(
+                "Conflicts Resolved",
+                f"{summary['conflicts_resolved_pct']}%",
+                delta="Autonomous Consensus Rate"
+            )
 
         # Interactive Plotly Charts
         st.markdown("#### 📊 Comparative Performance: Baseline vs. FreightFlow AI")
@@ -45,42 +61,70 @@ def render_metrics_view():
         records = summary.get("records", [])
         avg_base_delay = sum(r["baseline_delay_hrs"] for r in records) / len(records)
         avg_ai_delay = sum(r["ai_delay_hrs"] for r in records) / len(records)
+        avg_base_wait = sum(r["baseline_truck_wait_hrs"] for r in records) / len(records)
+        avg_ai_wait = sum(r["ai_truck_wait_hrs"] for r in records) / len(records)
         avg_base_cost = sum(r["baseline_cost_inr"] for r in records) / len(records)
         avg_ai_cost = sum(r["ai_cost_inr"] for r in records) / len(records)
 
         with c1:
             fig_delay = go.Figure(data=[
-                go.Bar(name='Manual Baseline', x=['Transit Delay (hrs)', 'Truck Idle Wait (hrs)'], 
-                       y=[avg_base_delay, summary['avg_truck_waiting_saved_hrs']], marker_color='#ef4444'),
-                go.Bar(name='FreightFlow AI', x=['Transit Delay (hrs)', 'Truck Idle Wait (hrs)'], 
-                       y=[avg_ai_delay, 0.0], marker_color='#22c55e')
+                go.Bar(
+                    name='Manual Baseline',
+                    x=['Transit Delay (hrs)', 'Truck Idle Wait (hrs)'], 
+                    y=[avg_base_delay, avg_base_wait],
+                    text=[f"{avg_base_delay:.1f}h", f"{avg_base_wait:.1f}h"],
+                    textposition='outside',
+                    marker_color='#ef4444'
+                ),
+                go.Bar(
+                    name='FreightFlow AI',
+                    x=['Transit Delay (hrs)', 'Truck Idle Wait (hrs)'], 
+                    y=[avg_ai_delay, avg_ai_wait],
+                    text=[f"{avg_ai_delay:.1f}h", f"{avg_ai_wait:.1f}h"],
+                    textposition='outside',
+                    marker_color='#22c55e'
+                )
             ])
             fig_delay.update_layout(
                 title="Delay & Truck Waiting Comparison",
                 barmode='group',
-                height=280,
+                height=310,
                 margin=dict(l=20, r=20, t=40, b=20),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                yaxis=dict(title="Hours", range=[0, max(avg_base_delay, avg_base_wait) * 1.35])
             )
             st.plotly_chart(fig_delay, use_container_width=True, theme="streamlit", config={"displayModeBar": False})
 
         with c2:
             fig_cost = go.Figure(data=[
-                go.Bar(name='Manual Cascade Penalties', x=['Financial Exposure'], 
-                       y=[avg_base_cost], marker_color='#ef4444', text=[f"₹{avg_base_cost:,.0f}"], textposition='auto'),
-                go.Bar(name='FreightFlow AI Recovery Cost', x=['Financial Exposure'], 
-                       y=[avg_ai_cost], marker_color='#22c55e', text=[f"₹{avg_ai_cost:,.0f}"], textposition='auto')
+                go.Bar(
+                    name='Manual Cascade Penalties',
+                    x=['Financial Exposure'], 
+                    y=[avg_base_cost],
+                    marker_color='#ef4444',
+                    text=[f"₹{avg_base_cost:,.0f}"],
+                    textposition='outside'
+                ),
+                go.Bar(
+                    name='FreightFlow AI Recovery Cost',
+                    x=['Financial Exposure'], 
+                    y=[avg_ai_cost],
+                    marker_color='#22c55e',
+                    text=[f"₹{avg_ai_cost:,.0f}"],
+                    textposition='outside'
+                )
             ])
             fig_cost.update_layout(
                 title="Total Cost / Penalties per Disruption (INR)",
                 barmode='group',
-                height=280,
+                height=310,
                 margin=dict(l=20, r=20, t=40, b=20),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                yaxis=dict(title="Cost (₹)", range=[0, avg_base_cost * 1.35])
             )
             st.plotly_chart(fig_cost, use_container_width=True, theme="streamlit", config={"displayModeBar": False})
 

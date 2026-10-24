@@ -14,3 +14,17 @@ def test_disruption_generator():
 def test_benchmark_runner_init():
     runner = BenchmarkRunner(runs=5)
     assert runner.runs == 5
+
+
+def test_benchmark_runner_execution():
+    runner = BenchmarkRunner(runs=5)
+    summary = runner.run_benchmark()
+    assert summary["total_runs"] == 5
+    assert 50.0 <= summary["avg_delay_reduction_pct"] <= 95.0
+    assert 80.0 <= summary["conflicts_resolved_pct"] <= 100.0
+    assert summary["avg_cost_saved_inr"] > 0
+    assert len(summary["records"]) == 5
+    for rec in summary["records"]:
+        assert "ai_delay_hrs" in rec
+        assert "ai_truck_wait_hrs" in rec
+        assert "baseline_truck_wait_hrs" in rec
