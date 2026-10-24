@@ -94,3 +94,56 @@ def test_mock_live_gemini_call(sample_disruption, sample_plan):
         explanation = explainer.explain_plan(sample_disruption, sample_plan)
         assert explainer.last_source == "gemini"
         assert "Mocked Gemini Rationale" in explanation
+
+
+def test_custom_question_which_option_comparison(sample_disruption, sample_plan):
+    explainer = LLMExplainer(api_key="AIzaSyMockedValidKey123")
+    
+    # Simulate Gemini being throttled (returns None) so structured fallback triggers
+    with patch.object(explainer, "_call_gemini_raw", return_value=None):
+        ans = explainer.ask_custom_question(sample_disruption, sample_plan, "which option to choose and why so")
+        assert "### 🎯 Operational Decision & Strategic Recommendation" in ans
+        assert "Multi-Agent Pareto Trade-Off Matrix" in ans
+        assert "CHEAPEST" in ans
+        assert "FASTEST" in ans
+        assert "SAFEST" in ans
+        assert "Why Choose Which Option" in ans
+        assert "SLA Penalty Breakeven" in ans
+        assert explainer.last_source == "heuristic"
+
+
+def test_custom_question_with_all_plans(sample_disruption):
+    cheapest = RecoveryPlan(
+        plan_id="P1", category=PlanCategory.CHEAPEST, carrier_slot_id="TRK-1",
+        port_slot_id="PS-1", warehouse_slot_id="WH-1", total_cost_inr=5400.0,
+        total_delay_hours=4.5, reliability_score=0.70, cost_breakdown={}, negotiation_rounds_taken=3
+    )
+    fastest = RecoveryPlan(
+        plan_id="P2", category=PlanCategory.FASTEST, carrier_slot_id="TRK-2",
+        port_slot_id="PS-2", warehouse_slot_id="WH-2", total_cost_inr=8900.0,
+        total_delay_hours=1.5, reliability_score=0.90, cost_breakdown={}, negotiation_rounds_taken=3
+    )
+    safest = RecoveryPlan(
+        plan_id="P3", category=PlanCategory.SAFEST, carrier_slot_id="TRK-3",
+        port_slot_id="PS-3", warehouse_slot_id="WH-3", total_cost_inr=7100.0,
+        total_delay_hours=2.5, reliability_score=0.98, cost_breakdown={}, negotiation_rounds_taken=3
+    )
+    all_plans = [cheapest, fastest, safest]
+
+    explainer = LLMExplainer(api_key="")
+    ans = explainer.ask_custom_question(sample_disruption, cheapest, "which option to choose and why so", all_plans=all_plans)
+    assert "₹5,400.00" in ans
+    assert "₹8,900.00" in ans
+    assert "₹7,100.00" in ans
+    assert "FASTEST" in ans
+    assert "SAFEST" in ans
+
+
+def test_custom_question_live_gemini_mock(sample_disruption, sample_plan):
+    explainer = LLMExplainer(api_key="AIzaSyMockedValidKey123")
+    mock_resp = "### 🎯 Live Gemini Recommendation\nBased on real-time port analytics, select FASTEST."
+
+    with patch.object(explainer, "_call_gemini_raw", return_value=mock_resp):
+        ans = explainer.ask_custom_question(sample_disruption, sample_plan, "what is the best route?")
+        assert explainer.last_source == "gemini"
+        assert "Live Gemini Recommendation" in ans

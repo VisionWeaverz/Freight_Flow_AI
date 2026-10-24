@@ -93,18 +93,49 @@ def render_human_approval():
         # Custom interactive query section
         st.markdown("---")
         st.markdown("##### 💬 Ask Gemini AI about this Plan")
-        user_query = st.text_input(
-            f"Ask a question regarding the {current_category} recovery route:",
-            placeholder="Type your question about costs, penalties, or driver constraints...",
-            key=f"q_{current_category}"
-        )
-        if st.button("Submit Question to AI", key=f"btn_q_{current_category}"):
-            if user_query.strip():
-                with st.spinner("Consulting Gemini AI..."):
-                    ai_answer = explainer.ask_custom_question(event, plan, user_query.strip())
-                    st.info(ai_answer)
+        with st.form(key=f"form_qa_{current_category}", clear_on_submit=False):
+            user_query = st.text_input(
+                f"Ask a question regarding the {current_category} recovery route:",
+                placeholder="e.g. Which option to choose and why so? Or what about driver overtime?",
+                key=f"q_{current_category}"
+            )
+            btn_submit = st.form_submit_button("Submit Question to AI")
+
+        if btn_submit:
+            if user_query and user_query.strip():
+                with st.spinner("Consulting AI Operations Advisor..."):
+                    negotiated_plans = st.session_state.get("negotiated_plans")
+                    ai_answer = explainer.ask_custom_question(
+                        event, plan, user_query.strip(), all_plans=negotiated_plans
+                    )
+                    st.session_state[f"last_custom_q_{current_category}"] = user_query.strip()
+                    st.session_state[f"last_custom_answer_{current_category}"] = ai_answer
+                    st.session_state[f"last_custom_source_{current_category}"] = explainer.last_source
+                    st.session_state[f"last_custom_model_{current_category}"] = explainer.last_model_used or explainer.model
             else:
                 st.warning("Please enter a question to consult Gemini.")
+
+        # Persisted display of custom AI response
+        saved_answer = st.session_state.get(f"last_custom_answer_{current_category}")
+        saved_q = st.session_state.get(f"last_custom_q_{current_category}")
+        saved_source = st.session_state.get(f"last_custom_source_{current_category}", "gemini")
+        saved_model = st.session_state.get(f"last_custom_model_{current_category}", explainer.model)
+
+        if saved_answer:
+            badge_icon = "✨" if saved_source == "gemini" else "🤖"
+            badge_text = f"Google Gemini (`{saved_model}`)" if saved_source == "gemini" else "FreightFlow Operational Advisory Engine"
+            st.markdown(
+                f"""
+                <div style="background: rgba(30, 41, 59, 0.55); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 12px 16px; margin: 14px 0 10px 0;">
+                    <div style="font-size: 0.85rem; color: #94a3b8;">
+                        {badge_icon} <strong>Advisory Response for:</strong> <em style="color: #f1f5f9;">"{saved_q}"</em> &nbsp;•&nbsp; 
+                        <span style="color: #38bdf8; font-weight: 500;">{badge_text}</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            st.markdown(saved_answer)
 
     # Approval and Commit Action
     col_btn, col_msg = st.columns([1, 2])
