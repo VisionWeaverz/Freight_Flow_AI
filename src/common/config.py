@@ -22,7 +22,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'data' / 'freig
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # Negotiation & Simulation Defaults
 MAX_NEGOTIATION_ROUNDS = int(os.getenv("DEFAULT_SIMULATION_ROUNDS", 3))
@@ -30,7 +30,7 @@ EVALUATION_RUNS = int(os.getenv("EVALUATION_RUNS", 50))
 DEFAULT_SEED = int(os.getenv("RANDOM_SEED", 42))
 
 
-def save_gemini_api_key(api_key: str, model: str = "gemini-3.8-flash") -> None:
+def save_gemini_api_key(api_key: str, model: str = "gemini-3.5-flash") -> None:
     """Updates active environment and persists to .env file."""
     os.environ["GEMINI_API_KEY"] = api_key
     os.environ["GOOGLE_API_KEY"] = api_key

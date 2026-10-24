@@ -25,7 +25,19 @@ def render_plan_comparator():
     fastest = next((p for p in plans if p.category == PlanCategory.FASTEST), plans[1] if len(plans) > 1 else plans[0])
     safest = next((p for p in plans if p.category == PlanCategory.SAFEST), plans[2] if len(plans) > 2 else plans[0])
 
+    plans_by_cat = {
+        PlanCategory.CHEAPEST.value: cheapest,
+        PlanCategory.FASTEST.value: fastest,
+        PlanCategory.SAFEST.value: safest,
+    }
+
     selected_category = st.session_state.get("selected_plan_category", PlanCategory.SAFEST.value)
+    if selected_category not in plans_by_cat:
+        selected_category = PlanCategory.SAFEST.value
+
+    # Keep selected_plan synchronized with the active category on every render
+    st.session_state["selected_plan_category"] = selected_category
+    st.session_state["selected_plan"] = plans_by_cat[selected_category]
 
     col1, col2, col3 = st.columns(3)
 
@@ -44,8 +56,8 @@ def render_plan_comparator():
                 <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:inherit;">
                     <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> +{cheapest.total_delay_hours:.1f} hrs</p>
                     <p style="margin:4px 0; color:inherit;">🛡️ <b>Reliability:</b> {cheapest.reliability_score * 100:.0f}%</p>
-                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> {cheapest.carrier_slot_id}</p>
-                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> {cheapest.warehouse_slot_id}</p>
+                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> Standby ({cheapest.carrier_slot_id})</p>
+                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> Off-Peak ({cheapest.warehouse_slot_id})</p>
                 </div>
             </div>
             """,
@@ -54,6 +66,7 @@ def render_plan_comparator():
         if st.button("Select Cheapest Plan", key="btn_cheapest", use_container_width=True, type="secondary" if not is_sel else "primary"):
             st.session_state["selected_plan_category"] = PlanCategory.CHEAPEST.value
             st.session_state["selected_plan"] = cheapest
+            st.session_state["force_regenerate_explanation"] = True
             st.rerun()
 
     # Card 2: Fastest Plan
@@ -61,6 +74,9 @@ def render_plan_comparator():
         is_sel = selected_category == PlanCategory.FASTEST.value
         border = "#0ea5e9" if is_sel else "rgba(128, 128, 128, 0.25)"
         bg = "rgba(14, 165, 233, 0.12)" if is_sel else "rgba(128, 128, 128, 0.08)"
+        disruption_delay = getattr(impact, "initial_delay_hours", 4.0)
+        time_mitigated = max(0.0, disruption_delay - fastest.total_delay_hours)
+        mitigated_tag = f"({time_mitigated:.1f}h Mitigated!)" if time_mitigated > 0 else "(Priority Speed)"
         st.markdown(
             f"""
             <div style="background:{bg}; border:2px solid {border}; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
@@ -69,10 +85,10 @@ def render_plan_comparator():
                 <div style="font-size:26px; font-weight:800; color:inherit;">₹ {fastest.total_cost_inr:,.0f}</div>
                 <p style="font-size:13px; color:inherit; opacity:0.75; margin:2px 0 12px 0;">Immediate Velocity Recovery</p>
                 <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:inherit;">
-                    <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> +{fastest.total_delay_hours:.1f} hrs (0h Extra!)</p>
+                    <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> +{fastest.total_delay_hours:.1f} hrs {mitigated_tag}</p>
                     <p style="margin:4px 0; color:inherit;">🛡️ <b>Reliability:</b> {fastest.reliability_score * 100:.0f}%</p>
-                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> {fastest.carrier_slot_id}</p>
-                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> {fastest.warehouse_slot_id}</p>
+                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> Backup Fleet ({fastest.carrier_slot_id})</p>
+                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> Expedited Bay ({fastest.warehouse_slot_id})</p>
                 </div>
             </div>
             """,
@@ -81,6 +97,7 @@ def render_plan_comparator():
         if st.button("Select Fastest Plan", key="btn_fastest", use_container_width=True, type="secondary" if not is_sel else "primary"):
             st.session_state["selected_plan_category"] = PlanCategory.FASTEST.value
             st.session_state["selected_plan"] = fastest
+            st.session_state["force_regenerate_explanation"] = True
             st.rerun()
 
     # Card 3: Safest Plan
@@ -96,10 +113,10 @@ def render_plan_comparator():
                 <div style="font-size:26px; font-weight:800; color:inherit;">₹ {safest.total_cost_inr:,.0f}</div>
                 <p style="font-size:13px; color:inherit; opacity:0.75; margin:2px 0 12px 0;">Maximum On-Time Resilience</p>
                 <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:13px; color:inherit;">
-                    <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> Shift Realignment</p>
+                    <p style="margin:4px 0; color:inherit;">⏱️ <b>Added Delay:</b> +{safest.total_delay_hours:.1f} hrs (Buffer Protected)</p>
                     <p style="margin:4px 0; color:inherit;">🛡️ <b>Reliability:</b> {safest.reliability_score * 100:.0f}% (Highest)</p>
-                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> {safest.carrier_slot_id}</p>
-                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> {safest.warehouse_slot_id}</p>
+                    <p style="margin:4px 0; color:inherit;">🚛 <b>Truck:</b> Protected Fleet ({safest.carrier_slot_id})</p>
+                    <p style="margin:4px 0; color:inherit;">🏬 <b>Dock:</b> Reserved Bay ({safest.warehouse_slot_id})</p>
                 </div>
             </div>
             """,
@@ -108,9 +125,5 @@ def render_plan_comparator():
         if st.button("Select Safest Plan", key="btn_safest", use_container_width=True, type="secondary" if not is_sel else "primary"):
             st.session_state["selected_plan_category"] = PlanCategory.SAFEST.value
             st.session_state["selected_plan"] = safest
+            st.session_state["force_regenerate_explanation"] = True
             st.rerun()
-
-    # Ensure selected plan defaults to Safest
-    if "selected_plan" not in st.session_state:
-        st.session_state["selected_plan"] = safest
-        st.session_state["selected_plan_category"] = PlanCategory.SAFEST.value

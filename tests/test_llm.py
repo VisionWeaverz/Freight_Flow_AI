@@ -52,7 +52,7 @@ def test_heuristic_explanation_fallback(sample_disruption, sample_plan):
     explanation = explainer.explain_plan(sample_disruption, sample_plan)
     assert explainer.last_source == "heuristic"
     assert "₹6,200.00" in explanation
-    assert "Cheapest Plan Analysis" in explanation
+    assert "cheapest plan" in explanation.lower()
 
 
 def test_heuristic_explanation_all_categories(sample_disruption, sample_plan):

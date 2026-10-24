@@ -109,6 +109,11 @@ class CascadeImpact(BaseModel):
     edges: List[CascadeEdge] = Field(default_factory=list)
     summary: str = ""
 
+    @property
+    def disruption_delay_hours(self) -> float:
+        """Alias for initial_delay_hours."""
+        return self.initial_delay_hours
+
     def __init__(self, **data):
         # Synchronize dual fields for seamless interoperability
         if "financial_risk_inr" in data and "total_financial_risk_inr" not in data:

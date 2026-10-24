@@ -188,8 +188,8 @@ def render_sidebar():
         # Ensure session keys initialized
         if "gemini_api_key" not in st.session_state:
             st.session_state["gemini_api_key"] = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or GEMINI_API_KEY or ""
-        if "gemini_model" not in st.session_state or st.session_state.get("gemini_model") == "gemini-2.5-flash":
-            st.session_state["gemini_model"] = os.getenv("GEMINI_MODEL") or "gemini-3.8-flash"
+        if "gemini_model" not in st.session_state or st.session_state.get("gemini_model") in ("gemini-2.5-flash", "gemini-3.8-flash"):
+            st.session_state["gemini_model"] = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash"
 
         current_key = st.session_state["gemini_api_key"]
         has_key = bool(current_key and current_key not in ("your_gemini_api_key_here", "AIzaSy..."))
@@ -211,7 +211,7 @@ def render_sidebar():
         )
 
         # Model Selector
-        model_options = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
+        model_options = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest"]
         current_idx = model_options.index(st.session_state["gemini_model"]) if st.session_state["gemini_model"] in model_options else 0
         selected_model = st.selectbox("Gemini Model", model_options, index=current_idx)
 

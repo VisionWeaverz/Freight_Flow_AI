@@ -16,7 +16,7 @@ def render_human_approval():
     disruption_type_str = st.session_state.get("current_disruption_type", "PORT_CONGESTION")
 
     if not plan or not impact:
-        st.warning("Please select a plan above to view AI rationale and execute approval.")
+        st.warning("Please select a recovery plan above to view AI rationale and execute approval.")
         return
 
     # Parse DisruptionType enum safely
@@ -46,35 +46,47 @@ def render_human_approval():
 
     # Initialize LLM Explainer with active session configuration
     api_key = st.session_state.get("gemini_api_key")
-    model = st.session_state.get("gemini_model", "gemini-3.8-flash")
+    model = st.session_state.get("gemini_model", "gemini-3.5-flash")
     explainer = LLMExplainer(api_key=api_key, model=model)
 
-    # Cache explanation in session state per plan category to avoid repetitive API latency
-    exp_cache_key = f"explanation_{shipment_id}_{disruption_type_str}_{delay_hours:.1f}_{plan.category.value}_{bool(explainer.is_configured())}"
-    
+    # Detect if user selected a different plan category
+    current_category = plan.category.value
+    last_category = st.session_state.get("last_explained_category")
+    if last_category != current_category:
+        st.session_state["force_regenerate_explanation"] = True
+        st.session_state["last_explained_category"] = current_category
+
+    rationale_counter = st.session_state.get("rationale_counter", 0)
+    exp_cache_key = f"explanation_{shipment_id}_{disruption_type_str}_{delay_hours:.1f}_{current_category}_{rationale_counter}"
+
+    # Generate or retrieve cached explanation
     if exp_cache_key not in st.session_state or st.session_state.get("force_regenerate_explanation"):
-        explanation = explainer.explain_plan(event, plan)
-        st.session_state[exp_cache_key] = explanation
-        st.session_state["last_explainer_source"] = explainer.last_source
-        st.session_state["last_explainer_model"] = explainer.last_model_used
-        st.session_state["force_regenerate_explanation"] = False
+        with st.spinner(f"Analyzing multi-agent trade-offs for {current_category} plan..."):
+            explanation = explainer.explain_plan(event, plan, iteration=rationale_counter)
+            st.session_state[exp_cache_key] = explanation
+            st.session_state["active_explanation"] = explanation
+            st.session_state["last_explainer_source"] = explainer.last_source
+            st.session_state["last_explainer_model"] = explainer.last_model_used
+            st.session_state["force_regenerate_explanation"] = False
     else:
-        explanation = st.session_state[exp_cache_key]
+        explanation = st.session_state.get("active_explanation") or st.session_state[exp_cache_key]
 
-    source_badge = (
-        f"✨ Powered by Google Gemini (`{explainer.model}`)"
-        if explainer.is_configured()
-        else "🤖 Powered by FreightFlow Offline Rule Engine (Heuristic)"
-    )
+    source_used = st.session_state.get("last_explainer_source", explainer.last_source)
+    model_used = st.session_state.get("last_explainer_model") or explainer.last_model_used or explainer.model
+    if source_used == "gemini":
+        source_badge = f"✨ **Powered by Google Gemini** (`{model_used}`)"
+    else:
+        source_badge = f"🤖 **Powered by FreightFlow Operational Rule Engine** (Perspective #{rationale_counter + 1})"
 
-    with st.expander("🤖 AI Trade-Off Rationale (Generated for Operator)", expanded=True):
+    with st.expander(f"🤖 AI Trade-Off Rationale for [{current_category}] Plan", expanded=True):
         st.caption(source_badge)
         st.markdown(explanation)
 
         # Interactive controls inside expander
         c_regen, c_pad = st.columns([1, 4])
         with c_regen:
-            if st.button("🔄 Regenerate Rationale", use_container_width=True):
+            if st.button("🔄 Regenerate Rationale", key="btn_regen_rationale", use_container_width=True):
+                st.session_state["rationale_counter"] = rationale_counter + 1
                 st.session_state["force_regenerate_explanation"] = True
                 st.rerun()
 
@@ -82,11 +94,11 @@ def render_human_approval():
         st.markdown("---")
         st.markdown("##### 💬 Ask Gemini AI about this Plan")
         user_query = st.text_input(
-            "Operator question (e.g., 'What are the main risks with carrier backup fleet?')",
+            f"Ask a question regarding the {current_category} recovery route:",
             placeholder="Type your question about costs, penalties, or driver constraints...",
-            key=f"q_{plan.category.value}"
+            key=f"q_{current_category}"
         )
-        if st.button("Submit Question to AI", key=f"btn_q_{plan.category.value}"):
+        if st.button("Submit Question to AI", key=f"btn_q_{current_category}"):
             if user_query.strip():
                 with st.spinner("Consulting Gemini AI..."):
                     ai_answer = explainer.ask_custom_question(event, plan, user_query.strip())
