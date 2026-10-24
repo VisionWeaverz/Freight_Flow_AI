@@ -97,3 +97,33 @@ def test_compute_cascade_impact_warehouse_bottleneck_shp_1001():
     assert impact.nodes[3].status == "BREACHED"
     assert impact.nodes[3].details["sla_breached"] is True
     assert impact.financial_risk_inr > 0
+
+
+def test_get_human_plan_attributes_adapts_to_disruption_types():
+    from src.dashboard.components.plan_comparator import get_human_plan_attributes
+    from src.common.schemas import RecoveryPlan, PlanCategory
+
+    dummy_plan = RecoveryPlan(
+        plan_id="P-TEST", category=PlanCategory.CHEAPEST, carrier_slot_id="TRUCK-WAIT-R1",
+        port_slot_id="BERTH-DELAYED-R1", warehouse_slot_id="DOCK-MORNING-R1",
+        total_cost_inr=5200.0, total_delay_hours=14.0, reliability_score=0.82, cost_breakdown={},
+        negotiation_rounds_taken=3
+    )
+    impact = compute_cascade_impact("SHP-1005", added_delay_hours=4.0)
+
+    # 1. Port Congestion
+    attrs_port = get_human_plan_attributes(dummy_plan, impact, PlanCategory.CHEAPEST, "PORT_CONGESTION")
+    assert "Port Standby" in attrs_port["truck_title"] or "berth crane" in attrs_port["truck_desc"]
+    assert "TRUCK-WAIT-R1" not in attrs_port["truck_desc"]
+
+    # 2. Traffic Incident
+    attrs_traffic = get_human_plan_attributes(dummy_plan, impact, PlanCategory.CHEAPEST, "TRAFFIC_INCIDENT")
+    assert "Traffic" in attrs_traffic["truck_title"] or "expressway" in attrs_traffic["truck_desc"]
+
+    # 3. Truck Breakdown
+    attrs_breakdown = get_human_plan_attributes(dummy_plan, impact, PlanCategory.CHEAPEST, "TRUCK_BREAKDOWN")
+    assert "Repair" in attrs_breakdown["truck_title"] or "mechanic" in attrs_breakdown["truck_desc"]
+
+    # 4. Warehouse Bottleneck
+    attrs_whs = get_human_plan_attributes(dummy_plan, impact, PlanCategory.CHEAPEST, "WAREHOUSE_BOTTLENECK")
+    assert "Staging" in attrs_whs["truck_title"] or "depot" in attrs_whs["truck_desc"]

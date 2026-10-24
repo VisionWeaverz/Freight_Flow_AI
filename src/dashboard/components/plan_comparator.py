@@ -6,54 +6,114 @@ from src.cascade.impact_analyzer import compute_cascade_impact
 from src.common.schemas import PlanCategory
 
 
-def get_human_plan_attributes(plan, impact, cat: PlanCategory):
-    """Translates raw operational codes and technical metrics into intuitive, human-understandable logistics terms."""
+def get_human_plan_attributes(plan, impact, cat: PlanCategory, disruption_type: str = "PORT_CONGESTION"):
+    """Translates raw operational codes and technical metrics into intuitive, human-understandable logistics terms dynamically tailored to the active disruption."""
+    dtype = (disruption_type or "PORT_CONGESTION").upper()
+    is_road = dtype in ("TRAFFIC_INCIDENT", "TRUCK_BREAKDOWN")
+    is_whs = dtype == "WAREHOUSE_BOTTLENECK"
+    is_port = dtype in ("PORT_CONGESTION", "VESSEL_DELAY")
+    c_slot = (plan.carrier_slot_id or "").upper()
+    w_slot = (plan.warehouse_slot_id or "").upper()
+
     # 1. Delivery Schedule
-    if plan.total_delay_hours == 0.0:
+    if plan.total_delay_hours <= 0.05:
         timing_badge = "ON TIME"
         timing_badge_bg = "rgba(34, 197, 94, 0.2)"
         timing_badge_color = "#22c55e"
         timing_title = "On-Time Delivery (0h Delay)"
-        timing_desc = "⚡ Immediate priority turn-around fully clears initial delay"
+        timing_desc = "⚡ Immediate priority resources completely clear initial delay"
     elif plan.total_delay_hours >= 12.0:
         timing_badge = "NEXT MORNING"
         timing_badge_bg = "rgba(245, 158, 11, 0.2)"
         timing_badge_color = "#f59e0b"
         timing_title = "Next-Day Morning (08:00 AM Slot)"
-        timing_desc = f"🌙 Held overnight in secure depot; avoids costly night overtime wages (+{plan.total_delay_hours:.0f}h hold)"
+        if is_whs:
+            timing_desc = "🌙 Held overnight in secure depot; avoids costly night overtime wages"
+        elif is_road:
+            timing_desc = f"🌙 Held overnight in secure depot; avoids night shift overtime (+{plan.total_delay_hours:.0f}h hold)"
+        else:
+            timing_desc = f"🌙 Held overnight in secure depot; avoids costly night overtime wages (+{plan.total_delay_hours:.0f}h hold)"
     else:
         timing_badge = f"+{plan.total_delay_hours:.1f}H OFFSET"
         timing_badge_bg = "rgba(56, 189, 248, 0.2)"
         timing_badge_color = "#38bdf8"
         timing_title = f"+{plan.total_delay_hours:.1f}h Adjusted Arrival"
-        timing_desc = "⏱️ Delivery offset absorbed within extended customer SLA grace buffer"
+        timing_desc = "⏱️ Delivery offset absorbed within customer SLA grace buffer"
 
-    # 2. Fleet & Road Transport Action
-    c_slot = plan.carrier_slot_id or ""
-    if "REPLACEMENT" in c_slot:
-        truck_title = "Relief Replacement Fleet"
-        truck_desc = f"Emergency backup carrier swaps in to bypass delay ({c_slot})"
-    elif cat == PlanCategory.SAFEST:
-        truck_title = "Protected Carrier with GPS Routing"
-        truck_desc = f"Assigned high-compliance driver with dynamic route clearance ({c_slot})"
-    else:
-        truck_title = "Original Carrier Standby (No Swap)"
-        truck_desc = f"Same driver waits on route; avoids ₹8,500 replacement fee ({c_slot})"
+    # 2. Fleet & Road Transport Action (Tailored dynamically to disruption type)
+    if is_road:
+        if dtype == "TRUCK_BREAKDOWN":
+            if "REPLACEMENT" in c_slot or cat == PlanCategory.FASTEST:
+                truck_title = "Emergency Relief Backup Truck"
+                truck_desc = "Relief truck dispatched immediately to hitch stalled trailer and resume transit"
+            elif cat == PlanCategory.SAFEST:
+                truck_title = "Vetted Relief Carrier with GPS"
+                truck_desc = "Inspected carrier assigned with live GPS telemetry to ensure zero secondary breakdowns"
+            else:
+                truck_title = "On-Site Roadside Repair"
+                truck_desc = "Mobile mechanic dispatched to fix vehicle on-site; avoids hiring ₹8,500 replacement fleet"
+        else:  # TRAFFIC_INCIDENT
+            if "REPLACEMENT" in c_slot or cat == PlanCategory.FASTEST:
+                truck_title = "Express Bypass Carrier"
+                truck_desc = "Relief truck swaps in via open express toll lanes to bypass highway congestion"
+            elif cat == PlanCategory.SAFEST:
+                truck_title = "Protected Carrier with GPS Detour"
+                truck_desc = "Primary driver rerouted along pre-cleared secondary arterial corridors with real-time GPS"
+            else:
+                truck_title = "Driver Standby (Traffic Hold)"
+                truck_desc = "Driver pauses on route until expressway congestion clears; avoids replacement fees"
+    elif is_whs:
+        if cat == PlanCategory.FASTEST:
+            truck_title = "Direct Gate Escort"
+            truck_desc = "Driver guided straight into express turnaround door upon arrival for under 60-min unload"
+        elif cat == PlanCategory.SAFEST:
+            truck_title = "Scheduled Morning Gate Check-In"
+            truck_desc = "Driver checks in at dedicated reserved morning slot with zero gate line waiting"
+        else:
+            truck_title = "Depot Staging Yard Rest"
+            truck_desc = "Driver safely stages trailer in depot yard overnight; eliminates gate idling penalties"
+    else:  # PORT_CONGESTION or VESSEL_DELAY
+        if "REPLACEMENT" in c_slot or cat == PlanCategory.FASTEST:
+            truck_title = "Hot-Dispatch Relief Fleet"
+            truck_desc = "Emergency carrier staged at port gate for immediate pickup the moment crane clears"
+        elif cat == PlanCategory.SAFEST:
+            truck_title = "Protected Carrier with GPS Routing"
+            truck_desc = "Vetted carrier assigned with real-time transit telemetry along uncongested corridors"
+        else:
+            truck_title = "Synchronized Port Standby"
+            truck_desc = "Driver waits for berth crane to clear container; avoids premature gate idling fees"
 
-    # 3. Warehouse Dock Intake Action
-    w_slot = plan.warehouse_slot_id or ""
-    if "OVERTIME" in w_slot:
-        dock_title = "Priority Overtime Bay (Evening Shift)"
-        dock_desc = f"After-hours crew unloads cargo tonight without staging lag ({w_slot})"
-    elif "R3" in w_slot or "RESERVED" in w_slot:
-        dock_title = "Guaranteed Reserved Bay (08:00 AM)"
-        dock_desc = f"Pre-booked bay with buffer; guarantees zero queue detention ({w_slot})"
-    elif "MORNING" in w_slot:
-        dock_title = "Next-Morning Intake Bay (08:00 AM)"
-        dock_desc = f"Fresh day-shift crew handles intake; waives overtime fees ({w_slot})"
-    else:
-        dock_title = "Standard Assigned Intake Bay"
-        dock_desc = f"Clears through standard warehouse gate reception ({w_slot})"
+    # 3. Warehouse Dock Intake Action (Tailored dynamically to disruption type)
+    if is_whs:
+        if cat == PlanCategory.FASTEST or "OVERTIME" in w_slot:
+            dock_title = "Expedited Overtime Bay (Evening Shift)"
+            dock_desc = "After-hours turnaround crew unloads container in under 60 minutes tonight"
+        elif cat == PlanCategory.SAFEST or "R3" in w_slot:
+            dock_title = "Guaranteed Reserved Bay (08:00 AM)"
+            dock_desc = "Pre-booked dock door with dedicated equipment guarantees 100% bay clearance certainty"
+        else:
+            dock_title = "Next-Morning Intake Bay (08:00 AM)"
+            dock_desc = "Offloads with regular day-shift crew; waives ₹1,800/hr evening overtime labor fees"
+    elif is_road:
+        if cat == PlanCategory.FASTEST or "OVERTIME" in w_slot:
+            dock_title = "Priority Overtime Bay (Evening Shift)"
+            dock_desc = "Evening turnaround crew unloads container immediately upon arrival tonight"
+        elif cat == PlanCategory.SAFEST or "R3" in w_slot:
+            dock_title = "Guaranteed Reserved Bay (08:00 AM)"
+            dock_desc = "Pre-booked morning bay guarantees immediate unloading with zero gate line wait"
+        else:
+            dock_title = "Next-Morning Intake Bay (08:00 AM)"
+            dock_desc = "Intake deferred to morning shift; waives missed-slot cancellation penalties"
+    else:  # Port / Maritime
+        if cat == PlanCategory.FASTEST or "OVERTIME" in w_slot:
+            dock_title = "Priority Overtime Bay (Evening Shift)"
+            dock_desc = "Dedicated after-hours crew unloads cargo tonight without staging lag"
+        elif cat == PlanCategory.SAFEST or "R3" in w_slot:
+            dock_title = "Guaranteed Reserved Bay (08:00 AM)"
+            dock_desc = "Pre-booked morning bay with buffer; guarantees zero queue detention"
+        else:
+            dock_title = "Next-Morning Intake Bay (08:00 AM)"
+            dock_desc = "Synchronized with berth clearance velocity; waives evening overtime wages"
 
     # 4. Operational Execution Certainty
     rel_pct = plan.reliability_score * 100
@@ -64,15 +124,39 @@ def get_human_plan_attributes(plan, impact, cat: PlanCategory):
     else:
         rel_label = f"<b>{rel_pct:.0f}%</b> (Moderate Certainty • Tight Schedule)"
 
-    # 5. Operational Net Strategy
+    # 5. Operational Net Strategy (Tailored dynamically to disruption type)
     financial_risk = getattr(impact, "financial_risk_inr", 17750.0)
     savings = max(0, financial_risk - plan.total_cost_inr)
-    if cat == PlanCategory.CHEAPEST:
-        tradeoff = f"💡 <b>Strategy:</b> Holds cargo until standard morning shift to maximize cost savings (saves ₹{savings:,.0f} vs unmitigated fines)."
-    elif cat == PlanCategory.FASTEST:
-        tradeoff = "💡 <b>Strategy:</b> Deploys emergency priority resources to eliminate delay (0h lag) and protect customer delivery SLA."
-    else:
-        tradeoff = f"💡 <b>Strategy:</b> Balances low recovery cost with guaranteed reserved buffer slots for maximum schedule reliability."
+
+    if is_road:
+        if dtype == "TRUCK_BREAKDOWN":
+            if cat == PlanCategory.CHEAPEST:
+                tradeoff = f"💡 <b>Strategy:</b> Resolves breakdown via on-site repair and defers to morning intake, avoiding replacement fleet fees (saves ₹{savings:,.0f})."
+            elif cat == PlanCategory.FASTEST:
+                tradeoff = "💡 <b>Strategy:</b> Swaps in emergency backup truck immediately to eliminate breakdown delay (0h lag) and protect customer delivery SLA."
+            else:
+                tradeoff = "💡 <b>Strategy:</b> Deploys vetted backup carrier and reserved morning bay for 84%+ schedule resilience."
+        else:  # TRAFFIC_INCIDENT
+            if cat == PlanCategory.CHEAPEST:
+                tradeoff = f"💡 <b>Strategy:</b> Waits out expressway gridlock without hiring surge-rate trucks, preserving operating margins (saves ₹{savings:,.0f})."
+            elif cat == PlanCategory.FASTEST:
+                tradeoff = "💡 <b>Strategy:</b> Bypasses highway congestion via relief carrier and expedited evening bay to protect delivery SLA (0h lag)."
+            else:
+                tradeoff = "💡 <b>Strategy:</b> Avoids unpredictable highway traffic via GPS detour and pre-booked morning bay for 84%+ delivery certainty."
+    elif is_whs:
+        if cat == PlanCategory.CHEAPEST:
+            tradeoff = f"💡 <b>Strategy:</b> Avoids expensive evening dock overtime wages by staging overnight until regular morning intake (saves ₹{savings:,.0f})."
+        elif cat == PlanCategory.FASTEST:
+            tradeoff = "💡 <b>Strategy:</b> Clears warehouse dock congestion tonight via priority overtime crew to preserve same-day delivery SLAs."
+        else:
+            tradeoff = "💡 <b>Strategy:</b> Pre-books reserved morning dock bay with dedicated equipment to completely eliminate dock demurrage."
+    else:  # Port / Maritime
+        if cat == PlanCategory.CHEAPEST:
+            tradeoff = f"💡 <b>Strategy:</b> Clears container through standard berth queues without rush crane fees, preserving profit margins (saves ₹{savings:,.0f})."
+        elif cat == PlanCategory.FASTEST:
+            tradeoff = "💡 <b>Strategy:</b> Fast-tracks container discharge via green-lane berth and expedited carrier to eliminate delay (0h lag) and protect delivery SLA."
+        else:
+            tradeoff = "💡 <b>Strategy:</b> Balances dedicated customs clearance slot with guaranteed reserved morning bay for 84%+ reliability."
 
     return {
         "timing_title": timing_title,
@@ -146,9 +230,9 @@ def render_plan_comparator():
     st.session_state["selected_plan_category"] = selected_category
     st.session_state["selected_plan"] = plans_by_cat[selected_category]
 
-    info_cheap = get_human_plan_attributes(cheapest, impact, PlanCategory.CHEAPEST)
-    info_fast = get_human_plan_attributes(fastest, impact, PlanCategory.FASTEST)
-    info_safe = get_human_plan_attributes(safest, impact, PlanCategory.SAFEST)
+    info_cheap = get_human_plan_attributes(cheapest, impact, PlanCategory.CHEAPEST, disruption_type)
+    info_fast = get_human_plan_attributes(fastest, impact, PlanCategory.FASTEST, disruption_type)
+    info_safe = get_human_plan_attributes(safest, impact, PlanCategory.SAFEST, disruption_type)
 
     col1, col2, col3 = st.columns(3)
 
