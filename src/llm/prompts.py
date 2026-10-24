@@ -5,6 +5,12 @@ Provide a concise, focused executive rationale for the selected recovery plan.
 Keep it short, on-point, and structured with bullet points. Do NOT write long essays or walls of text.
 Do NOT wrap the output in markdown code blocks (no backticks).
 
+CRITICAL HUMAN-READABILITY & DOMAIN GUIDELINES:
+- Write in clean, intuitive, human logistics language that any operations supervisor can instantly grasp.
+- Do NOT output raw internal database slot codes (e.g., TRUCK-WAIT-R1, DOCK-MORNING-R3, BERTH-DELAYED-R1). Refer to them naturally (e.g. 'primary carrier on standby', 'emergency relief truck', 'guaranteed reserved morning bay', 'priority evening overtime bay', etc.).
+- If transit delay offset is 12+ hours (e.g. +14.0h), explain it simply: 'Next-Day Morning Delivery: The truck is held overnight in the secure depot to avoid night overtime labor fees, arriving tomorrow morning at 08:00 AM.' Never call it a 'buffer schedule offset' or 'transit buffer window'.
+- If the disruption was highway traffic or truck breakdown, focus on how the carrier and warehouse coordinated to bypass the road delay. Do NOT mention port status if the port was nominal and cleared on time.
+
 Disruption Context:
 {disruption_details}
 
@@ -12,20 +18,20 @@ Selected Recovery Plan: {plan_category} Plan
 - Total Recovery Cost: ₹{total_cost_inr}
 - Transit Delay Offset: +{delay_hours} hours
 - Execution Reliability: {reliability_score}
-- Resource Allocation: Port {port_slot_id}, Carrier {carrier_slot_id}, Warehouse Dock {warehouse_slot_id}
+- Resource Allocation: {port_slot_id}, {carrier_slot_id}, {warehouse_slot_id}
 - Cost Breakdown: {cost_breakdown}
 
 Format your output EXACTLY as follows:
 
 #### 🎯 Why {plan_category} Plan & Decision Rationale
-- **Decision Taken**: 1-2 sentences explaining how the multi-agent decision directly resolved the active disruption at its source (e.g., if highway traffic or truck breakdown, focus on carrier rerouting/replacement fleet and warehouse intake sync; if warehouse dock bottleneck, focus on dock overtime vs morning bay; if port/vessel delay, focus on berth crane and gate sync). Do NOT mention port delays if the port was nominal and cleared on time.
-- **Why Choose This**: 1-2 sentences on the exact operational/contractual conditions when the supervisor should choose this plan.
+- **Decision Taken**: 1-2 clear, human-understandable sentences explaining how the agents resolved the disruption at its source.
+- **Why Choose This**: 1-2 practical sentences on when to choose this plan (e.g., non-perishable freight vs urgent SLA deadlines).
 
 #### ✅ Pros
-- 2-3 concise, high-impact bullet points highlighting key benefits (e.g. cost savings, delay mitigation, or reliability certainty).
+- 2-3 concise, high-impact bullet points highlighting key practical benefits (e.g. cost savings, delay mitigation, or reliability certainty).
 
 #### ⚠️ Cons
-- 2 concise bullet points highlighting key trade-offs or operational risks (e.g. added delay, carrier premium, or schedule flexibility requirements).
+- 2 concise bullet points highlighting key trade-offs (e.g. next-day morning delivery vs emergency surcharge fees).
 """
 
 TEXT_TO_EVENT_PROMPT = """

@@ -20,6 +20,38 @@ from src.common.config import GEMINI_API_KEY, LLM_PROVIDER, GEMINI_MODEL
 logger = logging.getLogger(__name__)
 
 
+def human_carrier_label(slot_id: Optional[str], category: Optional[PlanCategory] = None) -> str:
+    """Translates internal carrier slot code into human-readable logistics wording."""
+    s = (slot_id or "").upper()
+    if "REPLACEMENT" in s:
+        return "Emergency relief backup truck"
+    if category == PlanCategory.SAFEST or "PROTECTED" in s:
+        return "Protected primary carrier (with GPS dynamic rerouting)"
+    return "Primary carrier on standby (same driver, zero cargo transfer)"
+
+
+def human_warehouse_label(slot_id: Optional[str]) -> str:
+    """Translates internal dock bay code into human-readable logistics wording."""
+    s = (slot_id or "").upper()
+    if "OVERTIME" in s:
+        return "Priority evening overtime bay (dedicated turnaround crew)"
+    if "R3" in s or "RESERVED" in s:
+        return "Guaranteed reserved morning bay (08:00 AM slot)"
+    if "MORNING" in s:
+        return "Next-morning intake bay (08:00 AM regular shift)"
+    return "Standard warehouse intake bay"
+
+
+def human_port_label(slot_id: Optional[str]) -> str:
+    """Translates internal port slot code into human-readable logistics wording."""
+    s = (slot_id or "").upper()
+    if "EXPRESS" in s or "R2" in s:
+        return "Priority green-lane express berth (fast-track crane)"
+    if "DELAYED" in s or "R1" in s:
+        return "Standard clearance berth"
+    return "Scheduled container berth"
+
+
 class LLMExplainer:
     """Provides human-readable justifications and interactive Q&A for recovery plans.
     
@@ -309,6 +341,12 @@ class LLMExplainer:
         is_risk_query = any(w in q_lower for w in ["risk", "safe", "reliability", "buffer", "fail", "hazard", "certainty", "confidence", "breakdown"])
         is_resource_query = any(w in q_lower for w in ["driver", "truck", "dock", "port", "berth", "carrier", "warehouse", "slot"])
 
+        carrier_label = human_carrier_label(plan.carrier_slot_id, plan.category)
+        dock_label = human_warehouse_label(plan.warehouse_dock_id or plan.warehouse_slot_id)
+        port_label = human_port_label(plan.port_slot_id)
+        safest_dock_label = human_warehouse_label(safest.warehouse_slot_id)
+        safest_carrier_label = human_carrier_label(safest.carrier_slot_id, safest.category)
+
         guidance_blocks = []
 
         if is_choice_query or (not is_cost_query and not is_time_query and not is_risk_query and not is_resource_query):
@@ -325,7 +363,7 @@ class LLMExplainer:
                 f"   - **Low Breach Penalties**: Consignee SLA penalties are minor or waived, allowing you to directly save **₹{delta_cost_fast:,.2f}** in freight expenses.\n\n"
                 f"3. **Select 🛡️ SAFEST (+{safest.total_delay_hours:.1f}h delay, ₹{safest.total_cost_inr:,.2f}) — [Recommended Default] if:**\n"
                 f"   - **Operational Certainty**: Downstream warehouse dock or highway corridor is vulnerable to congestion. "
-                f"SAFEST locks in dedicated dock `{safest.warehouse_slot_id}` and high-compliance carrier `{safest.carrier_slot_id}` with **{safest.reliability_score * 100:.0f}% confidence**.\n"
+                f"SAFEST secures a {safest_dock_label.lower()} and {safest_carrier_label.lower()} with **{safest.reliability_score * 100:.0f}% confidence**.\n"
                 f"   - **Risk Hedging**: For just **+₹{delta_cost_safe:,.2f}** over the cheapest plan, you eliminate secondary vehicle breakdown and dock detention penalties."
             )
 
@@ -334,8 +372,8 @@ class LLMExplainer:
                 f"### 💰 Financial Breakdown & Cost Allocation\n\n"
                 f"Financial commitment for **{plan.category.value}** route (Total: **₹{plan.total_cost_inr:,.2f}**):\n"
                 f"- **Carrier Road Haulage**: ₹{carrier_cost:,.2f} (covers vehicle fuel, driver allowance, and expressway tolls).\n"
-                f"- **Port Berth & Crane Slot**: ₹{port_cost:,.2f} (covers container discharge at slot `{plan.port_slot_id}`).\n"
-                f"- **Warehouse Dock Intake**: ₹{wh_cost:,.2f} (covers reserved intake bay `{plan.warehouse_dock_id}` and staging crew).\n\n"
+                f"- **Port Berth & Crane Slot**: ₹{port_cost:,.2f} (covers container discharge at {port_label.lower()}).\n"
+                f"- **Warehouse Dock Intake**: ₹{wh_cost:,.2f} (covers {dock_label.lower()}).\n\n"
                 f"**Financial Protection Insight**:\n"
                 f"- Standby idle truck cost runs ~₹450/hour; this plan synchronizes crane and gate appointments, avoiding ₹{disruption.delay_hours * 450:,.2f} in driver idle demurrage.\n"
                 f"- Choosing CHEAPEST yields ₹{fastest.total_cost_inr - cheapest.total_cost_inr:,.2f} in cash savings over FASTEST."
@@ -347,7 +385,7 @@ class LLMExplainer:
                 f"- **Initial Disruption Delay**: +{disruption.delay_hours:.1f} hours ({disruption.description}).\n"
                 f"- **Net Recovered Delay under {plan.category.value}**: **+{plan.total_delay_hours:.1f} hours**.\n"
                 f"- **Expedited Alternative**: FASTEST compresses delivery to **+{fastest.total_delay_hours:.1f} hours** (saving {delta_delay_fast:.1f}h) via green-lane port clearance.\n"
-                f"- **Downstream Intake**: Dock appointment at `{plan.warehouse_dock_id}` is guaranteed to clear before overnight warehouse curfew."
+                f"- **Downstream Intake**: Dock appointment is synchronized with the {dock_label.lower()} to ensure immediate unloading without gate detention."
             )
 
         if is_risk_query:
@@ -355,15 +393,15 @@ class LLMExplainer:
                 f"### 🛡️ Reliability & Secondary Disruption Shield\n\n"
                 f"- **Plan Confidence Score**: **{plan.reliability_score * 100:.0f}%** operational feasibility.\n"
                 f"- **Safety Enhancement**: SAFEST increases delivery reliability by **+{delta_rel_safe:.0f}%** over CHEAPEST by securing a vetted Tier-1 carrier and dedicated intake slot.\n"
-                f"- **Buffer Allocation**: A 45-minute staging contingency window has been embedded into warehouse dock `{plan.warehouse_dock_id}` to absorb expressway traffic variances."
+                f"- **Buffer Allocation**: A 45-minute staging contingency window has been embedded into warehouse intake to absorb expressway traffic variances."
             )
 
         if is_resource_query and not is_choice_query:
             guidance_blocks.append(
                 f"### 🚛 Resource Allocation Assessment\n\n"
-                f"- **Assigned Carrier**: `{plan.truck_id}` with verified maintenance clearance and active driver duty cycle.\n"
-                f"- **Assigned Port Slot**: `{plan.port_slot_id}` matched for container discharge.\n"
-                f"- **Assigned Warehouse Bay**: `{plan.warehouse_dock_id}` with reserved staging crew."
+                f"- **Assigned Carrier**: {carrier_label} (verified maintenance clearance and active driver duty cycle).\n"
+                f"- **Port Facility**: {port_label}.\n"
+                f"- **Warehouse Intake Bay**: {dock_label}."
             )
 
         guidance_text = "\n\n".join(guidance_blocks)
@@ -472,6 +510,10 @@ class LLMExplainer:
 
     def _call_gemini_explanation(self, disruption: DisruptionEvent, plan: RecoveryPlan) -> Optional[str]:
         """Calls Gemini to explain recovery plan trade-offs in a concise, structured pros/cons format."""
+        carrier_human = human_carrier_label(plan.carrier_slot_id, plan.category)
+        dock_human = human_warehouse_label(plan.warehouse_dock_id or plan.warehouse_slot_id)
+        port_human = human_port_label(plan.port_slot_id)
+
         prompt = PLAN_EXPLANATION_PROMPT.format(
             disruption_details=(
                 f"ID: {disruption.event_id}, Type: {disruption.event_type.value}, "
@@ -483,9 +525,9 @@ class LLMExplainer:
             delay_hours=f"{plan.total_delay_hours:.1f}",
             reliability_score=f"{plan.reliability_score * 100:.0f}%",
             cost_breakdown=json.dumps(plan.cost_breakdown or {}),
-            port_slot_id=plan.port_slot_id,
-            carrier_slot_id=plan.carrier_slot_id,
-            warehouse_slot_id=plan.warehouse_slot_id
+            port_slot_id=f"Port: {port_human}",
+            carrier_slot_id=f"Carrier: {carrier_human}",
+            warehouse_slot_id=f"Warehouse Intake Bay: {dock_human}"
         )
         resp = self._call_gemini_raw(prompt)
         if resp:
@@ -554,7 +596,7 @@ class LLMExplainer:
     # ──────────────────────────────────────────────────────────────────
 
     def _generate_heuristic_explanation(self, disruption: DisruptionEvent, plan: RecoveryPlan, iteration: int = 0) -> str:
-        """Synthesizes concise, structured pros/cons and decision rationale dynamically tailored to disruption type."""
+        """Synthesizes concise, structured pros/cons and decision rationale dynamically tailored to disruption type in human-friendly terms."""
         cat = plan.category
         cost = f"₹{plan.total_cost_inr:,.2f}"
         delay = f"{plan.total_delay_hours:.1f}"
@@ -574,53 +616,60 @@ class LLMExplainer:
             if cat == PlanCategory.CHEAPEST:
                 if variant == 0:
                     decision_taken = (
-                        f"Port clearance finished on schedule; the Coordinator absorbed the highway delay (+{disruption.delay_hours:.1f}h) by placing primary carrier "
-                        f"`{plan.carrier_slot_id}` on standby without incurring ₹8,500+ emergency replacement surcharges, "
-                        f"while the Warehouse Agent synchronized and deferred dock intake to off-peak bay `{plan.warehouse_slot_id}`."
+                        f"The primary driver remains on standby to wait out the highway delay (+{disruption.delay_hours:.1f}h) "
+                        f"without hiring an expensive backup truck, while the destination warehouse reschedules intake to tomorrow's "
+                        f"regular morning shift to avoid ₹1,800/hr night overtime wages."
                     )
                     why_choose = (
-                        "Best choice when the shipment is non-perishable general cargo with a flexible consignee receiving window (>8 hours), "
-                        "directly avoiding emergency fleet replacement fees and protecting operating margins."
+                        "Best choice for non-perishable general freight when the customer has a flexible receiving schedule "
+                        "and saving operational costs is the top priority."
                     )
                 else:
                     decision_taken = (
-                        f"To recover the {road_name} (+{disruption.delay_hours:.1f}h), the Carrier Agent maintained fleet continuity with "
-                        f"`{plan.carrier_slot_id}`, and the Warehouse Agent eliminated missed-slot penalties by shifting intake to slot `{plan.warehouse_slot_id}`."
+                        f"The coordinator absorbed the highway delay (+{disruption.delay_hours:.1f}h) by keeping the original truck on standby "
+                        f"until traffic cleared—avoiding ₹8,500+ emergency fleet replacement surcharges—and moving warehouse intake to an off-peak morning bay."
                     )
                     why_choose = (
-                        "Recommended for non-urgent freight where customer SLA breach penalties are negligible and budget preservation is prioritized."
+                        "Recommended for non-urgent shipments where contractual late delivery penalties are minor or waived, "
+                        "maximizing operational profit margins."
                     )
+
+                timing_con = (
+                    "- **Next-Day Morning Delivery**: Arrival is deferred to tomorrow morning (8:00 AM) to avoid costly night-shift overtime fees."
+                    if plan.total_delay_hours >= 12.0
+                    else f"- **Transit Delay**: Absorbs **+{delay}h** transit delay without highway compression."
+                )
 
                 return (
                     f"#### 🎯 Why Cheapest Plan & Decision Rationale ({road_name})\n"
                     f"- **Decision Taken**: {decision_taken}\n"
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
-                    f"- **Lowest Financial Commitment**: Absorbs just **{cost}**, completely avoiding third-party expedited carrier surcharges.\n"
-                    f"- **Resource Continuity**: Keeps original carrier `{plan.carrier_slot_id}` on route without cargo cross-docking friction.\n"
-                    f"- **Dock Penalty Shield**: Bay `{plan.warehouse_slot_id}` synchronized to realigned arrival, waiving missed-slot penalties.\n\n"
+                    f"- **Lowest Financial Commitment**: Absorbs just **{cost}**, completely avoiding emergency third-party carrier surcharges.\n"
+                    f"- **Zero Cargo Transfer Risk**: Retains the original driver and truck, eliminating the risk of cargo damage from emergency transfers.\n"
+                    f"- **No Missed-Slot Penalties**: Warehouse intake is synchronized with the new arrival time, waiving missed-appointment fines.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Transit Delay**: Absorbs **+{delay}h** transit delay without highway compression.\n"
-                    f"- **Lower Reliability**: Rated at **{rel}** confidence; vulnerable to secondary downstream corridor gridlock."
+                    f"{timing_con}\n"
+                    f"- **Lower Reliability Buffer**: Rated at **{rel}** confidence; leaves less buffer if downstream road bottlenecks occur."
                 )
 
             elif cat == PlanCategory.FASTEST:
                 if variant == 0:
                     decision_taken = (
-                        f"Port clearance was nominal; to bypass the {road_name} (+{disruption.delay_hours:.1f}h), the Carrier Agent hot-dispatched emergency replacement fleet "
-                        f"`{plan.carrier_slot_id}` via alternate clear-lane routing, while the Warehouse Agent pre-cleared expedited intake bay `{plan.warehouse_dock_id}`."
+                        f"To bypass the {road_name.lower()} (+{disruption.delay_hours:.1f}h), the carrier dispatched an emergency backup relief truck "
+                        f"via open expressway bypass lanes, while the destination warehouse activated a priority overtime evening dock door to unload cargo tonight."
                     )
                     why_choose = (
-                        "Essential whenever contractual customer late-delivery SLA penalties exceed ₹2,000/hour or cargo is high-value JIT components "
-                        "where line stoppages cause immediate downtime."
+                        "Essential when customer contractual late-delivery penalties exceed ₹2,000/hour or when shipping high-value "
+                        "Just-in-Time components where delayed delivery halts a factory production line."
                     )
                 else:
                     decision_taken = (
-                        f"The Coordinator compressed transit time across the highway leg by swapping in relief carrier `{plan.carrier_slot_id}` "
-                        f"to bypass the congested corridor, backed by immediate intake bay `{plan.warehouse_dock_id}` to meet delivery commitments."
+                        f"The coordinator compressed transit time across the highway leg by swapping in an emergency relief carrier "
+                        f"on clear alternate lanes, backed by an expedited evening warehouse bay for immediate same-day offloading."
                     )
                     why_choose = (
-                        "Recommended when customer delivery deadlines are non-negotiable and preserving SLA compliance takes precedence."
+                        "Recommended when customer delivery deadlines are strictly non-negotiable and preserving SLA compliance takes precedence."
                     )
 
                 return (
@@ -628,44 +677,50 @@ class LLMExplainer:
                     f"- **Decision Taken**: {decision_taken}\n"
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
-                    f"- **Maximum Velocity Recovery**: Compresses net delay down to **+{delay}h**, fully mitigating the highway setback.\n"
-                    f"- **SLA Penalty Elimination**: Prevents contractual customer delivery fines and customer production downtime.\n"
-                    f"- **Priority Throughput**: Immediate intake door `{plan.warehouse_dock_id}` activated upon arrival with zero gate wait.\n\n"
+                    f"- **Same-Day Delivery (0h Added Delay)**: Compresses net delay down to **+{delay}h**, completely mitigating the highway setback.\n"
+                    f"- **Zero SLA Penalties**: Prevents contractual customer delivery fines and customer line-stoppage claims.\n"
+                    f"- **Priority Gate Turnaround**: Dedicated overtime dock crew unloads the shipment immediately upon arrival with zero queue wait.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Emergency Premium**: Requires **{cost}** in recovery capital due to hot-dispatch replacement carrier rates.\n"
-                    f"- **Uneconomical for Bulk Goods**: Surcharge is cost-inefficient if the consignee has receiving schedule flexibility."
+                    f"- **Emergency Premium**: Requires **{cost}** in recovery spend due to expedited backup trucking rates and overtime warehouse labor.\n"
+                    f"- **Uneconomical for Routine Freight**: Surcharge is unnecessary if the consignee has flexible receiving hours."
                 )
 
             else:  # SAFEST
                 if variant == 0:
                     decision_taken = (
-                        f"Port clearance finished on time; the Coordinator resolved highway congestion by assigning high-compliance vetted carrier "
-                        f"`{plan.carrier_slot_id}` with GPS dynamic detour routing, while the Warehouse Agent locked guaranteed reserved morning bay `{plan.warehouse_dock_id}`."
+                        f"The coordinator guided the existing driver along pre-cleared arterial detour routes with real-time GPS tracking "
+                        f"to avoid traffic jams, while the destination warehouse locked a guaranteed reserved morning bay (08:00 AM) for instant offloading."
                     )
                     why_choose = (
-                        "Recommended enterprise default when highway conditions are unpredictable; completely eliminates secondary vehicle breakdowns, "
-                        "driver detention penalties, and dock rejection."
+                        "Recommended enterprise default when highway conditions are unpredictable and you cannot risk vehicle breakdown, "
+                        "driver detention penalties, or warehouse gate rejection."
                     )
                 else:
                     decision_taken = (
-                        f"A 3-party resilience consensus was established: carrier `{plan.carrier_slot_id}` navigates pre-cleared arterial detours, "
-                        f"and warehouse dock `{plan.warehouse_dock_id}` guarantees 100% bay clearance certainty."
+                        f"A resilient 3-party consensus was established: the carrier navigates pre-cleared secondary detour corridors with GPS tracking, "
+                        f"and the destination warehouse guarantees 100% bay clearance certainty tomorrow morning at 08:00 AM."
                     )
                     why_choose = (
                         "Ideal for high-priority consignments requiring maximum delivery certainty and zero tolerance for secondary disruption."
                     )
+
+                timing_con = (
+                    "- **Next-Day Morning Delivery**: Arrival shifts to tomorrow morning (8:00 AM) to maintain a controlled, protected receiving window."
+                    if plan.total_delay_hours >= 12.0
+                    else f"- **Controlled Buffer Window**: Operates with a controlled **+{delay}h** schedule buffer."
+                )
 
                 return (
                     f"#### 🎯 Why Safest Plan & Decision Rationale ({road_name})\n"
                     f"- **Decision Taken**: {decision_taken}\n"
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
-                    f"- **Highest Operational Certainty**: Delivers an industry-leading **{rel}** execution reliability score.\n"
-                    f"- **Detention & Demurrage Shield**: Pre-booked bay `{plan.warehouse_dock_id}` prevents warehouse rejection and driver overtime.\n"
-                    f"- **Balanced Economics**: Absorbs just **{cost}**, matching lowest expenditure while maximizing schedule reliability.\n\n"
+                    f"- **Highest Operational Certainty**: Delivers an industry-leading **{rel}** execution reliability score with built-in route buffer.\n"
+                    f"- **Guaranteed Gate Clearance**: Pre-booked morning bay guarantees zero waiting at the warehouse gate and prevents driver overtime penalties.\n"
+                    f"- **Balanced Cost**: Absorbs just **{cost}**, matching lowest expenditure while maximizing schedule certainty.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Buffer Schedule Offset**: Requires a controlled **+{delay}h** transit buffer window.\n"
-                    f"- **Consignee Alignment**: Consignee receiving staff must be notified to align with the reserved morning slot."
+                    f"{timing_con}\n"
+                    f"- **Customer Notice Needed**: Consignee receiving staff must be notified to prepare for the 8:00 AM morning arrival slot."
                 )
 
         # ─────────────────────────────────────────────────────────────
@@ -675,17 +730,17 @@ class LLMExplainer:
             if cat == PlanCategory.CHEAPEST:
                 if variant == 0:
                     decision_taken = (
-                        f"Port customs and highway transit arrived on schedule; to resolve destination dock congestion (+{disruption.delay_hours:.1f}h), "
-                        f"the Warehouse Agent rescheduled intake to off-peak morning bay `{plan.warehouse_slot_id}`, eliminating ₹1,800/hr evening overtime "
-                        f"labor wages and waiving the ₹12,500 missed slot penalty."
+                        f"Road transit arrived on schedule; to bypass destination dock queues (+{disruption.delay_hours:.1f}h), the truck is held overnight in the "
+                        f"secure depot yard, rescheduling offloading to tomorrow's regular morning shift bay to save ₹1,800/hr night overtime wages "
+                        f"and waive the ₹12,500 missed-slot penalty."
                     )
                     why_choose = (
                         "Best choice when freight can safely stage overnight in the secure depot yard and avoiding dock overtime surcharges is prioritized."
                     )
                 else:
                     decision_taken = (
-                        f"The Coordinator avoided dock overtime premiums by holding carrier `{plan.carrier_slot_id}` in secure staging and "
-                        f"synchronizing offloading to regular morning shift bay `{plan.warehouse_slot_id}`."
+                        f"The coordinator avoided dock overtime premiums by holding the truck in secure staging overnight and "
+                        f"synchronizing offloading with tomorrow's regular morning shift crew."
                     )
                     why_choose = (
                         "Recommended for non-urgent shipments where saving labor surcharges protects operational margins."
@@ -697,26 +752,26 @@ class LLMExplainer:
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
                     f"- **Lowest Financial Commitment**: Recovery costs only **{cost}**, completely saving evening dock overtime wages.\n"
-                    f"- **Demurrage Penalty Waiver**: Automated consensus waives missed-intake cancellation penalties.\n"
-                    f"- **Resource Stability**: Driver `{plan.carrier_slot_id}` rests in staging yard without gate idling fines.\n\n"
+                    f"- **Demurrage Penalty Waiver**: Automated multi-agent consensus waives missed-intake cancellation penalties.\n"
+                    f"- **Driver Rest & Safety**: Driver rests in the secure staging yard without incurring gate idling fines or fatigue violations.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Intake Postponement**: Warehouse intake is deferred by **+{delay}h**.\n"
-                    f"- **Holding Staging**: Requires truck `{plan.carrier_slot_id}` to stage until morning bay opens."
+                    f"- **Next-Day Morning Offloading**: Warehouse intake is deferred to tomorrow morning (8:00 AM).\n"
+                    f"- **Depot Staging**: Requires the shipment to remain staged in the trailer until the morning intake shift opens."
                 )
 
             elif cat == PlanCategory.FASTEST:
                 if variant == 0:
                     decision_taken = (
-                        f"Port and highway legs arrived on schedule; to resolve dock congestion without delay, the Warehouse Agent authorized "
-                        f"priority overtime bay `{plan.warehouse_dock_id}` with dedicated turnaround crew, clearing the stalled container immediately."
+                        f"Road transit arrived on schedule; to resolve dock congestion without delay, the warehouse authorized "
+                        f"a priority evening overtime bay with a dedicated turnaround crew to unload the container tonight."
                     )
                     why_choose = (
-                        "Best choice when cargo is urgently required for immediate retail fulfillment or morning factory assembly line feed."
+                        "Best choice when cargo is urgently required for immediate retail fulfillment, hospital supply, or morning factory assembly line feed."
                     )
                 else:
                     decision_taken = (
-                        f"The Coordinator prevented delivery delay by activating expedited dock bay `{plan.warehouse_dock_id}`, "
-                        f"turning carrier `{plan.carrier_slot_id}` around in under 60 minutes."
+                        f"The coordinator eliminated warehouse congestion by activating an expedited dock bay with a dedicated crew, "
+                        f"turning the truck around in under 60 minutes tonight."
                     )
                     why_choose = (
                         "Recommended whenever same-day delivery SLAs must be preserved at all costs."
@@ -727,27 +782,28 @@ class LLMExplainer:
                     f"- **Decision Taken**: {decision_taken}\n"
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
-                    f"- **Zero Delivery Lag**: Compresses intake delay down to **+{delay}h**, preserving the customer delivery SLA.\n"
-                    f"- **Dedicated Intake Door**: Immediate cargo intake at bay `{plan.warehouse_dock_id}` with zero queue delay.\n"
-                    f"- **Fleet Release**: Carrier `{plan.carrier_slot_id}` turned around in under 60 minutes for subsequent dispatches.\n\n"
+                    f"- **Zero Delivery Lag**: Compresses intake delay down to **+{delay}h**, preserving the customer delivery SLA today.\n"
+                    f"- **Dedicated Intake Door**: Immediate cargo intake at a priority bay with zero gate queue delay.\n"
+                    f"- **Fast Fleet Turnaround**: Releases the truck and driver in under 60 minutes for subsequent dispatches.\n\n"
                     f"#### ⚠️ Cons\n"
                     f"- **Overtime Labor Surcharge**: Commits **{cost}** due to after-hours warehouse overtime staffing.\n"
-                    f"- **Inefficient for General Freight**: Premium is uneconomical if customer SLA allows overnight hold."
+                    f"- **Uneconomical for General Freight**: Premium is uneconomical if customer SLA allows overnight hold."
                 )
 
             else:  # SAFEST
                 if variant == 0:
                     decision_taken = (
-                        f"Port and road transit finished on schedule; the Warehouse Agent locked a guaranteed reserved morning intake bay "
-                        f"`{plan.warehouse_dock_id}` with dedicated staging equipment, eliminating dock bottlenecks entirely."
+                        f"Avoids evening dock congestion by locking a guaranteed reserved morning intake bay (08:00 AM) "
+                        f"with dedicated unloading equipment, eliminating gate bottlenecks entirely."
                     )
                     why_choose = (
-                        "Recommended enterprise default for high-value freight where dock queue and intake rejection risks must be 100% eliminated."
+                        "Recommended enterprise default for high-value freight where warehouse gate queues, trailer detention, "
+                        "and intake rejection risks must be 100% eliminated."
                     )
                 else:
                     decision_taken = (
-                        f"The Coordinator established dock certainty by locking slot `{plan.warehouse_dock_id}`, providing carrier "
-                        f"`{plan.carrier_slot_id}` guaranteed intake clearance with **{rel}** execution confidence."
+                        f"The coordinator established dock certainty by locking a guaranteed morning intake bay, providing the carrier "
+                        f"guaranteed clearance with **{rel}** execution confidence."
                     )
                     why_choose = (
                         "Ideal for consignments requiring maximum delivery certainty and zero tolerance for secondary warehouse demurrage."
@@ -759,23 +815,24 @@ class LLMExplainer:
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
                     f"- **Maximum Intake Reliability**: Delivers an industry-leading **{rel}** intake clearance certainty.\n"
-                    f"- **Zero Demurrage Risk**: Pre-booked bay `{plan.warehouse_dock_id}` eliminates driver wait penalties and bay rejection.\n"
+                    f"- **Zero Demurrage Risk**: Pre-booked morning bay eliminates driver gate waiting, trailer detention fees, and bay rejection.\n"
                     f"- **Balanced Financials**: Absorbs just **{cost}**, balancing cost savings with guaranteed slot execution.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Scheduled Buffer**: Requires **+{delay}h** schedule buffer alignment.\n"
-                    f"- **Slot Compliance**: Carrier `{plan.carrier_slot_id}` must arrive strictly within the designated morning window."
+                    f"- **Next-Day Morning Arrival**: Unloading is scheduled for tomorrow morning (8:00 AM).\n"
+                    f"- **Slot Compliance**: Carrier must arrive strictly within the designated 8:00 AM morning receiving window."
                 )
 
         # ─────────────────────────────────────────────────────────────
         # 3. Port & Maritime Disruptions (Port Congestion / Vessel Delay)
         # ─────────────────────────────────────────────────────────────
         else:
+            port_name = "Port Berth Congestion" if dtype == DisruptionType.PORT_CONGESTION else "Vessel Arrival Delay"
             if cat == PlanCategory.CHEAPEST:
                 if variant == 0:
                     decision_taken = (
-                        f"The Coordinator minimized recovery spending by assigning primary carrier `{plan.carrier_slot_id}` to standard standby (avoiding ₹8,500+ "
-                        f"emergency fleet replacement surcharges), clearing cargo through regular port berth `{plan.port_slot_id}`, "
-                        f"and booking off-peak warehouse intake bay `{plan.warehouse_slot_id}`."
+                        f"The coordinator absorbed the {port_name.lower()} (+{disruption.delay_hours:.1f}h) by clearing cargo through standard berth queues "
+                        f"without paying rush crane fees, placing the primary carrier on standard standby (avoiding ₹8,500+ emergency fleet replacement surcharges), "
+                        f"and booking tomorrow's regular morning warehouse bay."
                     )
                     why_choose = (
                         "Best choice when the consignee has a flexible receiving grace window (>8 hours) and customer SLA breach "
@@ -783,32 +840,38 @@ class LLMExplainer:
                     )
                 else:
                     decision_taken = (
-                        f"The multi-agent negotiation absorbed the +{disruption.delay_hours:.1f}h disruption without expediting surcharges. "
-                        f"Carrier `{plan.carrier_slot_id}` absorbs standby idle, port berth `{plan.port_slot_id}` operates at standard gate velocity, "
-                        f"and warehouse intake is synchronized to off-peak bay `{plan.warehouse_slot_id}`."
+                        f"The multi-agent negotiation absorbed the +{disruption.delay_hours:.1f}h disruption without expediting surcharges: "
+                        f"the primary carrier absorbs standby idle, the port berth operates at standard gate velocity, "
+                        f"and warehouse intake is synchronized to tomorrow's regular morning shift."
                     )
                     why_choose = (
                         "Recommended for non-perishable general cargo where preserving profit margin outweighs transit urgency."
                     )
 
+                timing_con = (
+                    "- **Next-Day Morning Delivery**: Shipment arrives tomorrow morning (8:00 AM) due to standard clearance queues."
+                    if plan.total_delay_hours >= 12.0
+                    else f"- **Transit Delay**: Absorbs **+{delay}h** delay without transit compression."
+                )
+
                 return (
-                    f"#### 🎯 Why Cheapest Plan & Decision Rationale (Port Berth Congestion)\n"
+                    f"#### 🎯 Why Cheapest Plan & Decision Rationale ({port_name})\n"
                     f"- **Decision Taken**: {decision_taken}\n"
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
                     f"- **Lowest Financial Commitment**: Recovery costs only **{cost}**, preserving shipper profitability.\n"
                     f"- **No Surge Premiums**: Avoids expensive rush crane handling and third-party emergency carrier rates.\n"
-                    f"- **Resource Continuity**: Maintains original carrier fleet `{plan.carrier_slot_id}` without handoff friction.\n\n"
+                    f"- **Resource Continuity**: Retains original carrier fleet without vehicle handoff friction.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Transit Delay**: Absorbs **+{delay}h** delay without transit compression.\n"
+                    f"{timing_con}\n"
                     f"- **Lower Reliability**: Rated at **{rel}** confidence; leaves less buffer for secondary highway congestion."
                 )
 
             elif cat == PlanCategory.FASTEST:
                 if variant == 0:
                     decision_taken = (
-                        f"The Coordinator prioritized delivery velocity by clearing cargo via priority green-lane berth `{plan.port_slot_id}`, "
-                        f"hot-dispatching emergency relief carrier `{plan.carrier_slot_id}`, and booking expedited intake bay `{plan.warehouse_dock_id}`."
+                        f"The coordinator prioritized delivery velocity by clearing cargo via a priority green-lane berth, "
+                        f"hot-dispatching an emergency relief backup truck, and booking an expedited warehouse evening dock door."
                     )
                     why_choose = (
                         "Best choice when contractual customer SLA breach penalties exceed ₹2,000/hour or when shipping high-value, "
@@ -816,31 +879,31 @@ class LLMExplainer:
                     )
                 else:
                     decision_taken = (
-                        f"Multi-agent negotiation compressed transit time across all 3 nodes: expedited port discharge at `{plan.port_slot_id}`, "
-                        f"priority highway dispatch via replacement carrier `{plan.carrier_slot_id}`, and reserved hot dock bay `{plan.warehouse_dock_id}`."
+                        f"Multi-agent negotiation compressed transit time across all 3 nodes: expedited port discharge at green-lane berth, "
+                        f"priority highway dispatch via relief carrier, and reserved hot dock door at warehouse."
                     )
                     why_choose = (
                         "Recommended whenever delivery deadlines are non-negotiable and preserving customer account trust takes precedence."
                     )
 
                 return (
-                    f"#### 🎯 Why Fastest Plan & Decision Rationale (Port Berth Congestion)\n"
+                    f"#### 🎯 Why Fastest Plan & Decision Rationale ({port_name})\n"
                     f"- **Decision Taken**: {decision_taken}\n"
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
                     f"- **Maximum Delay Recovery**: Compresses net delay down to **+{delay}h**, fully mitigating the initial disruption setback.\n"
                     f"- **SLA Penalty Elimination**: Prevents contractual customer delivery fines and customer line-stoppage claims.\n"
-                    f"- **Priority Throughput**: Fast-tracks container discharge at berth `{plan.port_slot_id}` and offloading at dock `{plan.warehouse_dock_id}`.\n\n"
+                    f"- **Priority Throughput**: Fast-tracks container discharge at berth and offloading at destination dock with zero gate wait.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Highest Expense**: Requires **{cost}** in recovery capital due to expedited carrier and port premiums.\n"
+                    f"- **Highest Expense**: Requires **{cost}** in recovery spend due to expedited carrier and port crane premiums.\n"
                     f"- **Sub-optimal for Low-Value Freight**: Cost premium is uneconomical if consignee has an open receiving window."
                 )
 
             else:  # SAFEST
                 if variant == 0:
                     decision_taken = (
-                        f"The Coordinator established a 3-party consensus buffer by locking dedicated customs slot `{plan.port_slot_id}`, "
-                        f"vetted high-compliance carrier `{plan.carrier_slot_id}`, and guaranteed reserved morning dock bay `{plan.warehouse_dock_id}`."
+                        f"The coordinator established a resilient 3-party buffer by locking a dedicated customs clearance window, "
+                        f"assigning a vetted carrier with real-time GPS tracking, and securing a guaranteed reserved morning dock door."
                     )
                     why_choose = (
                         "Recommended enterprise default when downstream supply chain congestion is unpredictable; completely eliminates "
@@ -848,24 +911,30 @@ class LLMExplainer:
                     )
                 else:
                     decision_taken = (
-                        f"Agents agreed on a resilience-first profile: port slot `{plan.port_slot_id}` includes a 60-minute contingency buffer, "
-                        f"carrier `{plan.carrier_slot_id}` uses pre-cleared uncongested corridors, and dock `{plan.warehouse_dock_id}` guarantees immediate unloading."
+                        f"Agents agreed on a resilience-first profile: port berth includes a 60-minute contingency buffer, "
+                        f"the carrier uses pre-cleared uncongested corridors, and the destination warehouse guarantees immediate morning unloading."
                     )
                     why_choose = (
                         "Ideal for high-priority consignments requiring maximum delivery certainty and zero tolerance for secondary disruption."
                     )
 
+                timing_con = (
+                    "- **Next-Day Morning Delivery**: Delivery is scheduled for tomorrow morning (8:00 AM) to maintain a controlled, protected arrival window."
+                    if plan.total_delay_hours >= 12.0
+                    else f"- **Controlled Buffer Window**: Operates with a controlled **+{delay}h** schedule buffer."
+                )
+
                 return (
-                    f"#### 🎯 Why Safest Plan & Decision Rationale (Port Berth Congestion)\n"
+                    f"#### 🎯 Why Safest Plan & Decision Rationale ({port_name})\n"
                     f"- **Decision Taken**: {decision_taken}\n"
                     f"- **Why Choose This**: {why_choose}\n\n"
                     f"#### ✅ Pros\n"
                     f"- **Highest Operational Certainty**: Delivers an industry-leading **{rel}** execution reliability score.\n"
-                    f"- **Dock Queue Shield**: Pre-booked bay `{plan.warehouse_dock_id}` prevents warehouse rejection, driver overtime, and demurrage.\n"
+                    f"- **Zero Demurrage Risk**: Pre-booked morning bay eliminates warehouse rejection, driver overtime, and gate demurrage.\n"
                     f"- **Balanced Economics**: Absorbs just **{cost}**, matching lowest expenditure while maximizing schedule reliability.\n\n"
                     f"#### ⚠️ Cons\n"
-                    f"- **Buffer Schedule Offset**: Requires a controlled **+{delay}h** transit buffer window.\n"
-                    f"- **Window Alignment**: Consignee must be notified to align unloading staff with the updated reserved slot."
+                    f"{timing_con}\n"
+                    f"- **Receiving Alignment**: Customer warehouse receiving team must be notified to prepare for the 8:00 AM morning arrival."
                 )
 
     def _heuristic_parse_text(self, text: str) -> Dict[str, Any]:
