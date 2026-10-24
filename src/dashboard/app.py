@@ -107,14 +107,25 @@ st.markdown(
     }
 
     /* ─────────────────────────────────────────────────────────────
-       Modern Floating Separated Button Navigation Bar (Streamlit 1.66)
+       Modern Floating Separated Button Navigation Bar (Centered)
        ───────────────────────────────────────────────────────────── */
-    [data-testid="stTabs"] [role="tablist"] {
+    [data-testid="stTabs"] > div:first-child {
         display: flex !important;
-        gap: 16px !important;
+        justify-content: center !important;
+        width: 100% !important;
+    }
+
+    [data-testid="stTabs"] [role="tablist"],
+    [data-testid="stTabs"] [data-baseweb="tab-list"] {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        gap: 20px !important;
         border-bottom: none !important;
         background: transparent !important;
-        padding: 10px 4px 20px 4px !important;
+        padding: 10px 4px 24px 4px !important;
+        margin: 0 auto !important;
+        width: 100% !important;
         overflow-x: auto;
     }
 
@@ -324,12 +335,11 @@ def main():
     # 2. Render Top Branded Header
     render_top_header()
 
-    # 3. Modern Top Navigation Bar (Tabs)
-    tab1, tab2, tab3, tab4 = st.tabs([
+    # 3. Modern Top Navigation Bar (Centered 3 Tabs)
+    tab1, tab2, tab3 = st.tabs([
         "📡 1. Live Operations & Cascade Impact",
         "🤝 2. Multi-Agent Recovery & Approval",
-        "📈 3. Simulation Benchmarks (50 Runs)",
-        "ℹ️ 4. System Architecture & Pitch"
+        "📈 3. Simulation Benchmarks (50 Runs)"
     ])
 
     with tab1:
@@ -344,9 +354,6 @@ def main():
 
     with tab3:
         render_metrics_view()
-
-    with tab4:
-        render_pitch_architecture()
 
 
 if __name__ == "__main__":
