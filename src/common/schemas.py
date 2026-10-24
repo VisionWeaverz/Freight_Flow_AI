@@ -157,6 +157,16 @@ class RecoveryPlan(BaseModel):
     is_feasible: bool = True
     llm_explanation: Optional[str] = None
 
+    @property
+    def truck_id(self) -> str:
+        """Alias for carrier_slot_id."""
+        return self.carrier_slot_id
+
+    @property
+    def warehouse_dock_id(self) -> str:
+        """Alias for warehouse_slot_id."""
+        return self.warehouse_slot_id
+
 
 class EvaluationMetrics(BaseModel):
     run_id: int

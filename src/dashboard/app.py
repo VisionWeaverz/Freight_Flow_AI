@@ -1,6 +1,7 @@
 """FreightFlow AI - Modern Enterprise Streamlit Dashboard Entry Point."""
 
 import sys
+import os
 from pathlib import Path
 
 # Add project root to sys.path so 'src' and modules are discoverable
@@ -14,12 +15,14 @@ from src.dashboard.components.plan_comparator import render_plan_comparator
 from src.dashboard.components.human_approval import render_human_approval
 from src.dashboard.components.timeline_view import render_timeline_view
 from src.dashboard.components.metrics_view import render_metrics_view
+from src.common.config import GEMINI_API_KEY, GEMINI_MODEL, save_gemini_api_key
+from src.llm.explainer import LLMExplainer
 
 st.set_page_config(
     page_title="FreightFlow AI - Disruption Prediction & Recovery",
     page_icon="🚢",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ──────────────────────────────────────────────────────────────────
@@ -72,6 +75,7 @@ st.markdown(
         display: flex;
         gap: 10px;
         align-items: center;
+        flex-wrap: wrap;
     }
 
     .ff-badge {
@@ -90,6 +94,18 @@ st.markdown(
         color: #4ade80;
     }
 
+    .ff-badge-purple {
+        background: rgba(168, 85, 247, 0.18);
+        border: 1px solid #a855f7;
+        color: #c084fc;
+    }
+
+    .ff-badge-amber {
+        background: rgba(245, 158, 11, 0.15);
+        border: 1px solid #f59e0b;
+        color: #fbbf24;
+    }
+
     /* ─────────────────────────────────────────────────────────────
        Modern Floating Separated Button Navigation Bar (Streamlit 1.66)
        ───────────────────────────────────────────────────────────── */
@@ -98,55 +114,44 @@ st.markdown(
         gap: 16px !important;
         border-bottom: none !important;
         background: transparent !important;
-        padding: 8px 4px 20px 4px !important;
-        margin-bottom: 12px !important;
-        border: none !important;
+        padding: 10px 4px 20px 4px !important;
+        overflow-x: auto;
     }
 
-    /* Individual Floating Button Island */
-    [data-testid="stTabs"] [role="tab"],
-    [data-testid="stTab"] {
-        height: 48px !important;
-        background: rgba(128, 128, 128, 0.08) !important;
-        border: 1.5px solid rgba(128, 128, 128, 0.25) !important;
-        border-radius: 50px !important; /* Full pill shape */
-        padding: 0 24px !important;
+    [data-testid="stTabs"] [role="tab"] {
+        border-radius: 9999px !important; /* Full pill shape */
+        padding: 10px 22px !important;
         font-weight: 600 !important;
-        font-size: 0.95rem !important;
+        font-size: 14px !important;
+        border: 1px solid rgba(128, 128, 128, 0.22) !important;
+        background: rgba(128, 128, 128, 0.08) !important;
         color: inherit !important;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+        transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        margin-right: 0px !important;
+        outline: none !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        cursor: pointer !important;
-        margin: 0 !important;
     }
 
-    /* Floating Hover Lift Effect */
-    [data-testid="stTabs"] [role="tab"]:hover,
-    [data-testid="stTab"]:hover {
-        transform: translateY(-3px) !important;
-        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16) !important;
-        border-color: #0284c7 !important;
-        color: #0284c7 !important;
+    [data-testid="stTabs"] [role="tab"]:hover {
+        border-color: rgba(56, 189, 248, 0.6) !important;
+        background: rgba(56, 189, 248, 0.12) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2) !important;
     }
 
-    /* Active Selected Floating Pill with Gradient & Glow */
-    [data-testid="stTabs"] [role="tab"][aria-selected="true"],
-    [data-testid="stTabs"] [role="tab"][data-selected="true"],
-    [data-testid="stTab"][aria-selected="true"] {
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
         background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
         color: #ffffff !important;
-        border: 1.5px solid #0284c7 !important;
-        box-shadow: 0 8px 24px rgba(2, 132, 199, 0.45), 0 3px 8px rgba(2, 132, 199, 0.25) !important;
-        transform: translateY(-3px) !important;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 4px 16px rgba(2, 132, 199, 0.45) !important;
+        transform: translateY(-1px) !important;
     }
 
-    /* Text color inside active tab */
     [data-testid="stTabs"] [role="tab"][aria-selected="true"] p,
-    [data-testid="stTabs"] [role="tab"][aria-selected="true"] div,
-    [data-testid="stTabs"] [role="tab"][data-selected="true"] p {
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] div {
         color: #ffffff !important;
         font-weight: 700 !important;
     }
@@ -174,10 +179,92 @@ st.markdown(
 )
 
 
+def render_sidebar():
+    """Renders comprehensive Gemini API and operational configuration in the sidebar."""
+    with st.sidebar:
+        st.markdown("### 🤖 Google Gemini AI Engine")
+        st.caption("Empower autonomous recovery plans with Google Generative AI trade-off analysis.")
+
+        # Ensure session keys initialized
+        if "gemini_api_key" not in st.session_state:
+            st.session_state["gemini_api_key"] = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or GEMINI_API_KEY or ""
+        if "gemini_model" not in st.session_state:
+            st.session_state["gemini_model"] = os.getenv("GEMINI_MODEL") or GEMINI_MODEL or "gemini-2.5-flash"
+
+        current_key = st.session_state["gemini_api_key"]
+        has_key = bool(current_key and current_key not in ("your_gemini_api_key_here", "AIzaSy..."))
+
+        # Visual Status Pill
+        if has_key:
+            masked = current_key[:6] + "..." + current_key[-4:] if len(current_key) > 12 else "***"
+            st.success(f"🟢 **Live Gemini API Connected**\n\nKey: `{masked}`")
+        else:
+            st.warning("🟡 **Offline Rule Engine Active**\n\n(No Gemini key configured. Running high-fidelity offline heuristic fallback.)")
+
+        # API Key Input
+        input_key = st.text_input(
+            "Gemini API Key",
+            value=current_key,
+            type="password",
+            placeholder="AIzaSy...",
+            help="Get a free Gemini API key from Google AI Studio (https://aistudio.google.com/app/apikey)"
+        )
+
+        # Model Selector
+        model_options = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+        current_idx = model_options.index(st.session_state["gemini_model"]) if st.session_state["gemini_model"] in model_options else 0
+        selected_model = st.selectbox("Gemini Model", model_options, index=current_idx)
+
+        # Action Buttons
+        col_test, col_save = st.columns(2)
+        with col_test:
+            if st.button("⚡ Test Key", use_container_width=True):
+                if input_key.strip():
+                    with st.spinner("Connecting to Google Gemini..."):
+                        explainer = LLMExplainer(api_key=input_key.strip(), model=selected_model)
+                        success, msg = explainer.test_connection()
+                        if success:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+                else:
+                    st.error("Please enter an API key first.")
+
+        with col_save:
+            if st.button("💾 Save Key", use_container_width=True, type="primary"):
+                clean_key = input_key.strip()
+                st.session_state["gemini_api_key"] = clean_key
+                st.session_state["gemini_model"] = selected_model
+                save_gemini_api_key(clean_key, selected_model)
+                st.session_state["force_regenerate_explanation"] = True
+                st.success("Configuration saved and persisted!")
+                st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### ℹ️ Hackathon Guidance")
+        st.markdown(
+            """
+            * **Get a Free Key:** [Google AI Studio](https://aistudio.google.com/app/apikey)
+            * **Zero-Setup Resilience:** If no key is set, FreightFlow AI continues to run with 100% full fidelity using its built-in deterministic heuristic trade-off engine.
+            """
+        )
+        st.markdown("---")
+        st.caption("FreightFlow AI v2.4 • Team VisionWeavers")
+
+
 def render_top_header():
     """Renders sleek top SaaS header bar with branding and live status."""
+    current_key = st.session_state.get("gemini_api_key", "")
+    has_gemini = bool(current_key and current_key not in ("your_gemini_api_key_here", "AIzaSy..."))
+    
+    if has_gemini:
+        model_name = st.session_state.get("gemini_model", "gemini-2.5-flash")
+        gemini_badge = f'<span class="ff-badge ff-badge-purple">✨ Gemini Active ({model_name})</span>'
+    else:
+        gemini_badge = '<span class="ff-badge ff-badge-amber">🤖 Heuristic AI Engine</span>'
+
     st.markdown(
-        """
+        f"""
         <div class="ff-header">
             <div>
                 <div class="ff-title">🚢 FreightFlow AI: Disruption Prediction & Recovery</div>
@@ -185,6 +272,7 @@ def render_top_header():
             </div>
             <div class="ff-badge-container">
                 <span class="ff-badge ff-badge-green">🟢 Gateway Active</span>
+                {gemini_badge}
                 <span class="ff-badge">Team VisionWeavers</span>
                 <span class="ff-badge">1,200 Telemetry Consignments</span>
             </div>
@@ -224,16 +312,19 @@ def render_pitch_architecture():
               * **Carrier Agent:** Evaluates driver wait vs. backup fleet dispatch.
               * **Warehouse Agent:** Evaluates evening overtime vs. next-morning 08:00 AM slot.
             * **4. Pareto-Ranked Plans:** Central Coordinator outputs **Cheapest**, **Fastest**, and **Safest** options.
-            * **5. Human-in-the-Loop:** Plain-English LLM trade-off explanation and one-click execution.
+            * **5. Human-in-the-Loop & Gemini:** Plain-English LLM trade-off explanation and interactive supervisor Q&A.
             """
         )
 
 
 def main():
-    # 1. Render Top Branded Header
+    # 1. Render Modern Sidebar with Gemini Config
+    render_sidebar()
+
+    # 2. Render Top Branded Header
     render_top_header()
 
-    # 2. Modern Top Navigation Bar (Tabs)
+    # 3. Modern Top Navigation Bar (Tabs)
     tab1, tab2, tab3, tab4 = st.tabs([
         "📡 1. Live Operations & Cascade Impact",
         "🤝 2. Multi-Agent Recovery & Approval",
