@@ -126,8 +126,8 @@ def render_map_simulation():
     payload = build_replay_payload(bundle, disruption_type, delay, scenario=scenario)
     rows = [{"Shipment": shipment_id, "Unmitigated exposure (₹)": scenario["impact"].financial_risk_inr,
              **{p.category.value.title() + " operating fee (₹)": p.total_cost_inr for p in scenario["plans"]}}]
-    template = (ASSETS / "replay.html").read_text()
+    template = (ASSETS / "replay.html").read_text().replace("__PLAYBACK_MATH__", (ASSETS / "playback.js").read_text())
     serialized = json.dumps(payload).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    components.html(template.replace("__REPLAY_DATA__", serialized), height=900, scrolling=False)
+    components.html(template.replace("__REPLAY_DATA__", serialized), height=950, scrolling=False)
     st.dataframe(rows, hide_index=True, use_container_width=True)
     st.caption("Every price above is calculated once from the shared scenario and applied tariffs. Recovery prices are operating fees, excluding residual SLA penalties. Facility markers and vessel approach are illustrative; routes without stored road geometry are dashed. Basemaps require internet.")

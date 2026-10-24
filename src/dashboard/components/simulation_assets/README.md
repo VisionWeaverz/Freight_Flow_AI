@@ -5,6 +5,7 @@ selector above the tabs. `scenario.py` reads a fresh shipment/pricing snapshot o
 each rerun and computes exposure and plans once for all views. Changing shipment,
 disruption, delay, bookings, or tariffs invalidates the old approval and explanations.
 
+- `playback.js`: pure schedule-to-position and completion rules, covered by Node tests.
 - `replay.html`: Leaflet 1.9.4 map, vehicle animation, replay controls, event log,
   financial exposure, and recovery previews. Python injects a JSON payload into
   the template; no operational approval or database mutation occurs here.
@@ -37,11 +38,17 @@ landed costs or guaranteed savings.
 Controls: choose the active consignment, disruption, and duration above the tabs.
 Play/Pause, Step, Replay,
 or scrub below it. Choose Road/Satellite and Corridor/Port/Follow Truck views.
-Click facilities or vehicles for details. Click Cheapest/Fastest/Safest to preview
-recovery at the same simulation time, or restart to replay it from the beginning.
+Click facilities or vehicles for details. Click Cheapest/Fastest/Safest to restart a preview of that plan from the same
+starting clock. Each replay stops at its own customer delivery time; the playback
+rate stays constant across plans. Delivery ETA and replay duration are shown
+explicitly, so a faster plan finishes earlier rather than running to the slowest
+plan's horizon. Warehouse disruptions are parked waiting time, not extended
+final-mile travel. There is only one moving truck marker; the nominal reference
+dot was removed to avoid confusing it with the active simulation.
 
 Verification (isolated databases; preserves the app's active tariffs):
 
 ```sh
+node tests/test_playback.cjs
 ./venv/bin/pytest tests/test_shared_scenario.py tests/test_map_simulation.py tests/test_recovery_pricing.py -q
 ```
