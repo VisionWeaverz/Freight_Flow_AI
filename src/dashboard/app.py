@@ -16,6 +16,7 @@ from src.dashboard.components.human_approval import render_human_approval
 from src.dashboard.components.timeline_view import render_timeline_view
 from src.dashboard.components.metrics_view import render_metrics_view
 from src.dashboard.components.map_simulation import render_map_simulation
+from src.dashboard.components.scenario import render_scenario_controls
 from src.dashboard.components.rate_card_uploader import render_rate_card_manager, render_sidebar_tariff_card
 from src.database.rate_manager import is_custom_pricing_active
 from src.common.config import GEMINI_API_KEY, GEMINI_MODEL, save_gemini_api_key
@@ -352,7 +353,9 @@ def main():
     # 2. Render Top Branded Header
     render_top_header()
 
-    # 3. Modern Top Navigation Bar (Centered 3 Tabs)
+    render_scenario_controls()
+
+    # Shared scenario across all dashboard views
     tab1, tab2, tab3, tab4 = st.tabs([
         "📡 1. Live Operations & Cascade Impact",
         "🤝 2. Multi-Agent Recovery & Approval",

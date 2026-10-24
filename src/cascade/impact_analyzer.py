@@ -301,6 +301,11 @@ def build_cascade_graph(
     )
 
     # 5. Financial Exposure & Composite Risk Tier
+    # Sum the same rounded line items that operators see in both dashboards.
+    waiting_penalty = round(waiting_penalty, 2)
+    missed_slot_penalty = round(missed_slot_penalty, 2)
+    overtime_cost = round(overtime_cost, 2)
+    customer_sla_penalty = round(customer_sla_penalty, 2)
     financial_risk_inr = round(
         waiting_penalty + missed_slot_penalty + overtime_cost + customer_sla_penalty,
         2

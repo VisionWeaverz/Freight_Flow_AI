@@ -6,13 +6,14 @@ Operational Disruption Context:
 {disruption_details}
 
 Negotiated Recovery Plan: {plan_category} Plan
-- Total Recovery Cost: ₹{total_cost_inr}
+- Recovery Operating Fee (excludes residual SLA penalties): ₹{total_cost_inr}
 - Transit Delay Offset: +{delay_hours} hours
 - Execution Reliability: {reliability_score}
 - Resource Allocation: {port_slot_id}, {carrier_slot_id}, {warehouse_slot_id}
 - Cost Breakdown: {cost_breakdown}
 
 YOUR BRIEFING OBJECTIVE & GUIDELINES:
+0. Use only the supplied monetary amounts and cost breakdown. Do not invent tariffs, alternate plan prices, avoided penalties, or savings. An operating fee is not an all-in cost, and modeled reliability is not a guarantee.
 1. Provide a fluid, comprehensive, and expressive operational briefing. Speak freely with the natural authority, depth, and clarity of a seasoned supply chain director explaining the strategy to a colleague.
 2. Do NOT use a rigid or restricted boilerplate format (avoid repetitive "✅ Pros / ⚠️ Cons" checklists or formulaic fill-in-the-blank patterns). Write in natural, engaging prose and flexible bullet points.
 3. Your briefing should cover:

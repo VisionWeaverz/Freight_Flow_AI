@@ -7,9 +7,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-from src.agents.coordinator import CentralCoordinator
-from src.cascade.impact_analyzer import build_cascade_graph, query_shipment_bundle
-from src.database.rate_manager import get_active_pricing
+from src.dashboard.components.scenario import evaluate_scenario, shipment_catalog
 
 ASSETS = Path(__file__).with_name("simulation_assets")
 DISRUPTIONS = {
@@ -21,15 +19,15 @@ DISRUPTIONS = {
 }
 
 
-def build_replay_payload(bundle, disruption_type, delay_hours, rates):
+def build_replay_payload(bundle, disruption_type, delay_hours, rates=None, scenario=None):
     """Keep the disrupted replay exact; derive causal recovery previews from plan actions.
 
     RecoveryPlan contains aggregate delay, not milestone timestamps. The recovery
     preview therefore derives sequential times from the chosen slots and explicitly
     exposes that distinction instead of reusing the dashboard's illustrative times.
     """
-    _, impact = build_cascade_graph(bundle, delay_hours, disruption_type)
-    plans = CentralCoordinator().run_recovery_negotiation(impact)
+    scenario = scenario or evaluate_scenario(bundle["shipment"]["shipment_id"], disruption_type, delay_hours, bundle=bundle)
+    impact, plans, rates = scenario["impact"], scenario["plans"], scenario["pricing"]
     shp, truck, whs = bundle["shipment"], bundle["truck"], bundle["warehouse"]
     berth = datetime.fromisoformat(shp["eta_port_berth"])
     origin = berth - timedelta(hours=2)
@@ -76,9 +74,11 @@ def build_replay_payload(bundle, disruption_type, delay_hours, rates):
         })
     baseline_arrival = pickup + timedelta(hours=float(truck["transit_time_hours"]))
     end = max(disrupted["delivery"], *(p["schedule"]["delivery"] for p in recovered), hour(promise)) + 1
-    route_path = ASSETS / "jnpt_bhiwandi_route.json"
-    route = json.loads(route_path.read_text()) if route_path.exists() else None
+    geography = geography_for(shp["origin_port"], shp["destination_hub"])
+    route_path = ASSETS / geography["routeFile"]
+    route = json.loads(route_path.read_text()) if route_path.is_file() else None
     return {
+        "geography": geography,
         "shipment": shp["shipment_id"], "customer": shp["customer_name"],
         "truck": truck["truck_number"], "driver": truck["driver_name"], "bay": whs["dock_bay"],
         "originLabel": shp["origin_port"], "destinationLabel": shp["destination_hub"],
@@ -97,24 +97,50 @@ def build_replay_payload(bundle, disruption_type, delay_hours, rates):
     }
 
 
+def geography_for(origin, destination):
+    ports = {"Nhava Sheva (JNPT)": [18.949, 72.951], "JNPT": [18.949, 72.951],
+             "Chennai Port": [13.1, 80.30], "Mundra Port": [22.74, 69.70],
+             "Pipavav Port": [20.915, 71.515], "Kolkata Port": [22.54, 88.30]}
+    hubs = {"Bhiwandi Hub": [19.281, 73.048], "Bhiwandi": [19.281, 73.048],
+            "Sriperumbudur Mega Hub": [12.967, 79.948], "Ahmedabad Ring Hub": [23.04, 72.57],
+            "Bengaluru Whitefield Hub": [12.97, 77.75], "Gurugram Logistics Park": [28.45, 77.02]}
+    port, hub = ports.get(origin), hubs.get(destination)
+    if port is None or hub is None:
+        raise ValueError(f"Map coordinates unavailable for {origin} → {destination}")
+    is_jnpt = origin in ("Nhava Sheva (JNPT)", "JNPT")
+    is_bhiwandi = destination in ("Bhiwandi Hub", "Bhiwandi")
+    filename = "jnpt_bhiwandi_route.json" if is_jnpt and is_bhiwandi else f"route_{port[0]}_{port[1]}_{hub[0]}_{hub[1]}.json"
+    # Approximate offshore positions; facilities are illustrative, not telemetry.
+    anchor = [port[0] - .07, port[1] - .07] if origin not in ("Chennai Port", "Kolkata Port") else [port[0] - .02, port[1] + .08]
+    return {"port": port, "warehouse": hub, "customer": [hub[0] + .023, hub[1] + .014],
+            "anchor": anchor, "routeFile": filename}
+
+
 def render_map_simulation():
     st.markdown("### Geographic incident replay")
-    st.caption("JNPT → Bhiwandi • SHP-1005 • Real geography, simulated vehicle telemetry. Uses your active database tariffs.")
-    a, b, c = st.columns([1.5, 2, 1.2])
-    with a:
-        disruption = st.selectbox("Simulation disruption", list(DISRUPTIONS), key="map_disruption")
-    with b:
-        delay = st.slider("Added delay (hours)", 0.0, 8.0, 4.0, 0.5, key="map_delay")
-    with c:
-        rates = get_active_pricing("SHP-1005")
-        st.metric("Applied driver tariff", f"₹{rates['driver_waiting_cost_per_hr']:,.0f}/h")
-    try:
-        payload = build_replay_payload(query_shipment_bundle("SHP-1005"), DISRUPTIONS[disruption], delay, rates)
-    except (ValueError, OSError) as exc:
-        st.error(f"Cannot load the simulation shipment: {exc}")
-        return
+    scenario = st.session_state["current_scenario"]
+    bundle = scenario["bundle"]
+    shipment_id = bundle["shipment"]["shipment_id"]
+    disruption_type, delay = scenario["disruption_type"], scenario["delay_hours"]
+    st.caption(f"Shared scenario: {shipment_id} · {disruption_type.replace('_', ' ').title()} · +{delay:.1f}h. Costs match Operations and Recovery & Approval. Vehicle positions are simulated.")
+    catalog = shipment_catalog()
+    comparison_ids = st.multiselect("Additional ships / consignments to compare", list(catalog),
+        format_func=catalog.get, key="map_comparison_ships", max_selections=5,
+        help="The active shipment is always displayed. Add up to five others. Each is evaluated independently with the same disruption and delay, using its own bookings and tariffs.")
+    payload = build_replay_payload(bundle, disruption_type, delay, scenario=scenario)
+    fleet = []
+    rows = []
+    for sid in [shipment_id] + [sid for sid in comparison_ids if sid != shipment_id]:
+        result = scenario if sid == shipment_id else evaluate_scenario(sid, disruption_type, delay)
+        replay = payload if sid == shipment_id else build_replay_payload(result["bundle"], disruption_type, delay, scenario=result)
+        rows.append({"Shipment": sid, "Unmitigated exposure (₹)": result["impact"].financial_risk_inr,
+                     **{p.category.value.title() + " operating fee (₹)": p.total_cost_inr for p in result["plans"]}})
+        if sid != shipment_id:
+            fleet.append({key: value for key, value in replay.items() if key != "fleet"})
+    payload["fleet"] = fleet
+    payload["end"] = max([payload["end"]] + [entry["end"] for entry in fleet])
     template = (ASSETS / "replay.html").read_text()
-    # Keep database strings inert inside the script element.
     serialized = json.dumps(payload).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     components.html(template.replace("__REPLAY_DATA__", serialized), height=900, scrolling=False)
-    st.caption("Recovery is a preview, not an operational approval. Animated recovery times are derived from slot actions and transit duration; the coordinator’s aggregate delay estimate is shown separately. Facility markers are illustrative locations within the corridor. Basemaps need internet access.")
+    st.dataframe(rows, hide_index=True, use_container_width=True)
+    st.caption("Every price above is calculated once from the shared scenario and applied tariffs. Recovery prices are operating fees, excluding residual SLA penalties. Additional shipments are independent comparisons aligned by elapsed replay time, not a joint fleet optimization. Facility markers and vessel approach are illustrative; routes without stored road geometry are dashed. Basemaps require internet.")

@@ -72,7 +72,7 @@ class CentralCoordinator:
     # Primary public interface
     # ──────────────────────────────────────────────────────────────────
 
-    def run_recovery_negotiation(self, impact: CascadeImpact) -> List[RecoveryPlan]:
+    def run_recovery_negotiation(self, impact: CascadeImpact, pricing: Optional[Dict[str, float]] = None) -> List[RecoveryPlan]:
         """Runs the 3-round multi-agent negotiation driven by CascadeImpact.
 
         Args:
@@ -101,7 +101,7 @@ class CentralCoordinator:
         # Read applied shipment tariffs, never an uploaded-but-unapplied CSV.
         # Reset both agents each run so reusing a coordinator cannot retain old rates.
         from src.database.rate_manager import get_active_pricing, SYNTHETIC_BASELINE_RATES
-        pricing = (
+        pricing = pricing if pricing is not None else (
             get_active_pricing(impact.shipment_id)
             if impact.shipment_id else dict(SYNTHETIC_BASELINE_RATES)
         )

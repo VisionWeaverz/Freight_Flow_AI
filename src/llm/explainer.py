@@ -183,7 +183,7 @@ class LLMExplainer:
             return (
                 "⚠️ **Live Gemini API key not configured.** (Operating in resilient FreightFlow rule engine mode)\n\n"
                 f"Based on local logistics rules for **{plan.category.value}**: "
-                f"This plan commits total cost ₹{plan.total_cost_inr:,.2f} with +{plan.total_delay_hours:.1f}h transit delay "
+                f"This plan commits recovery operating fee ₹{plan.total_cost_inr:,.2f} with +{plan.total_delay_hours:.1f}h transit delay "
                 f"and {plan.reliability_score * 100:.0f}% reliability.\n\n"
                 f"{fallback_body}"
             )
@@ -270,161 +270,35 @@ class LLMExplainer:
         all_plans: Optional[List[RecoveryPlan]] = None
     ) -> str:
         """Synthesizes rich, structured, domain-grounded operational advice when LLM API is unavailable or throttled."""
-        # Resolve candidate Pareto plans
-        plans_map: Dict[PlanCategory, RecoveryPlan] = {}
-        if all_plans:
-            for p in all_plans:
-                plans_map[p.category] = p
-
-        cheapest = plans_map.get(PlanCategory.CHEAPEST)
-        fastest = plans_map.get(PlanCategory.FASTEST)
-        safest = plans_map.get(PlanCategory.SAFEST)
-
-        if not cheapest:
-            cheapest = plan if plan.category == PlanCategory.CHEAPEST else RecoveryPlan(
-                plan_id="PLAN-CHEAPEST-REF",
-                category=PlanCategory.CHEAPEST,
-                carrier_slot_id=plan.carrier_slot_id,
-                port_slot_id=plan.port_slot_id,
-                warehouse_slot_id=plan.warehouse_slot_id,
-                total_cost_inr=min(plan.total_cost_inr, 5700.0),
-                total_delay_hours=max(plan.total_delay_hours, 5.0),
-                reliability_score=0.68,
-                cost_breakdown={"port": 1200.0, "carrier": 3300.0, "warehouse": 1200.0},
-                negotiation_rounds_taken=3
-            )
-        if not fastest:
-            fastest = plan if plan.category == PlanCategory.FASTEST else RecoveryPlan(
-                plan_id="PLAN-FASTEST-REF",
-                category=PlanCategory.FASTEST,
-                carrier_slot_id=plan.carrier_slot_id,
-                port_slot_id=plan.port_slot_id,
-                warehouse_slot_id=plan.warehouse_slot_id,
-                total_cost_inr=max(plan.total_cost_inr * 1.45, 8200.0),
-                total_delay_hours=max(1.0, min(plan.total_delay_hours * 0.4, 2.5)),
-                reliability_score=0.88,
-                cost_breakdown={"port": 2400.0, "carrier": 4300.0, "warehouse": 1500.0},
-                negotiation_rounds_taken=3
-            )
-        if not safest:
-            safest = plan if plan.category == PlanCategory.SAFEST else RecoveryPlan(
-                plan_id="PLAN-SAFEST-REF",
-                category=PlanCategory.SAFEST,
-                carrier_slot_id=plan.carrier_slot_id,
-                port_slot_id=plan.port_slot_id,
-                warehouse_slot_id=plan.warehouse_slot_id,
-                total_cost_inr=max(plan.total_cost_inr * 1.15, 6800.0),
-                total_delay_hours=max(1.5, plan.total_delay_hours * 0.7),
-                reliability_score=0.96,
-                cost_breakdown={"port": 1800.0, "carrier": 3600.0, "warehouse": 1400.0},
-                negotiation_rounds_taken=3
-            )
-
-        # Financial & operational trade-off calculations
-        delta_cost_fast = max(500.0, fastest.total_cost_inr - cheapest.total_cost_inr)
-        delta_delay_fast = max(0.5, cheapest.total_delay_hours - fastest.total_delay_hours)
-        breakeven_sla = delta_cost_fast / delta_delay_fast
-
-        delta_cost_safe = max(300.0, safest.total_cost_inr - cheapest.total_cost_inr)
-        delta_rel_safe = max(5.0, (safest.reliability_score - cheapest.reliability_score) * 100)
-
-        # Cost breakdown values for the currently viewed plan
-        cb = plan.cost_breakdown or {}
-        carrier_cost = cb.get("carrier", plan.total_cost_inr * 0.55)
-        port_cost = cb.get("port", plan.total_cost_inr * 0.25)
-        wh_cost = cb.get("warehouse", plan.total_cost_inr * 0.20)
-
-        q_lower = user_query.lower()
-        is_choice_query = any(w in q_lower for w in ["which", "choose", "option", "pick", "why", "recommend", "compare", "difference", "better", "best", "what should"])
-        is_cost_query = any(w in q_lower for w in ["cost", "price", "inr", "rupee", "₹", "expensive", "budget", "penalty", "financial", "save", "savings", "fee", "idle", "overtime"])
-        is_time_query = any(w in q_lower for w in ["delay", "time", "hour", "speed", "fast", "schedule", "eta", "transit", "timeline", "late", "duration"])
-        is_risk_query = any(w in q_lower for w in ["risk", "safe", "reliability", "buffer", "fail", "hazard", "certainty", "confidence", "breakdown"])
-        is_resource_query = any(w in q_lower for w in ["driver", "truck", "dock", "port", "berth", "carrier", "warehouse", "slot"])
-
-        carrier_label = human_carrier_label(plan.carrier_slot_id, plan.category)
-        dock_label = human_warehouse_label(plan.warehouse_dock_id or plan.warehouse_slot_id)
-        port_label = human_port_label(plan.port_slot_id)
-        safest_dock_label = human_warehouse_label(safest.warehouse_slot_id)
-        safest_carrier_label = human_carrier_label(safest.carrier_slot_id, safest.category)
-
-        guidance_blocks = []
-
-        if is_choice_query or (not is_cost_query and not is_time_query and not is_risk_query and not is_resource_query):
-            guidance_blocks.append(
-                f"### ⚖️ Strategic Decision Matrix: Why Choose Which Option?\n\n"
-                f"When selecting among the negotiated Pareto plans, apply these operational decision thresholds:\n\n"
-                f"1. **Select ⚡ FASTEST (+{fastest.total_delay_hours:.1f}h delay, ₹{fastest.total_cost_inr:,.2f}) if:**\n"
-                f"   - **SLA Penalty Breakeven**: Your contractual delivery delay penalty exceeds **₹{breakeven_sla:,.0f}/hour**. "
-                f"FASTEST recovers **{delta_delay_fast:.1f} hours** earlier for an extra **₹{delta_cost_fast:,.2f}** in expedited carrier & crane surcharges, "
-                f"yielding a net cost savings whenever SLA penalties exceed this rate.\n"
-                f"   - **Cargo Urgency**: The shipment involves perishable goods, refrigerated pharmaceuticals, or critical assembly components where downtime costs dwarf freight premiums.\n\n"
-                f"2. **Select 💰 CHEAPEST (+{cheapest.total_delay_hours:.1f}h delay, ₹{cheapest.total_cost_inr:,.2f}) if:**\n"
-                f"   - **Margin Preservation**: Cargo is non-perishable general freight with a flexible receiving window (> 8 hours grace period).\n"
-                f"   - **Low Breach Penalties**: Consignee SLA penalties are minor or waived, allowing you to directly save **₹{delta_cost_fast:,.2f}** in freight expenses.\n\n"
-                f"3. **Select 🛡️ SAFEST (+{safest.total_delay_hours:.1f}h delay, ₹{safest.total_cost_inr:,.2f}) — [Recommended Default] if:**\n"
-                f"   - **Operational Certainty**: Downstream warehouse dock or highway corridor is vulnerable to congestion. "
-                f"SAFEST secures a {safest_dock_label.lower()} and {safest_carrier_label.lower()} with **{safest.reliability_score * 100:.0f}% confidence**.\n"
-                f"   - **Risk Hedging**: For just **+₹{delta_cost_safe:,.2f}** over the cheapest plan, you eliminate secondary vehicle breakdown and dock detention penalties."
-            )
-
-        if is_cost_query:
-            guidance_blocks.append(
-                f"### 💰 Financial Breakdown & Cost Allocation\n\n"
-                f"Financial commitment for **{plan.category.value}** route (Total: **₹{plan.total_cost_inr:,.2f}**):\n"
-                f"- **Carrier Road Haulage**: ₹{carrier_cost:,.2f} (covers vehicle fuel, driver allowance, and expressway tolls).\n"
-                f"- **Port Berth & Crane Slot**: ₹{port_cost:,.2f} (covers container discharge at {port_label.lower()}).\n"
-                f"- **Warehouse Dock Intake**: ₹{wh_cost:,.2f} (covers {dock_label.lower()}).\n\n"
-                f"**Financial Protection Insight**:\n"
-                f"- Standby idle truck cost runs ~₹450/hour; this plan synchronizes crane and gate appointments, avoiding ₹{disruption.delay_hours * 450:,.2f} in driver idle demurrage.\n"
-                f"- Choosing CHEAPEST yields ₹{fastest.total_cost_inr - cheapest.total_cost_inr:,.2f} in cash savings over FASTEST."
-            )
-
-        if is_time_query:
-            guidance_blocks.append(
-                f"### ⏱️ Transit Timeline & Delay Recovery Dynamics\n\n"
-                f"- **Initial Disruption Delay**: +{disruption.delay_hours:.1f} hours ({disruption.description}).\n"
-                f"- **Net Recovered Delay under {plan.category.value}**: **+{plan.total_delay_hours:.1f} hours**.\n"
-                f"- **Expedited Alternative**: FASTEST compresses delivery to **+{fastest.total_delay_hours:.1f} hours** (saving {delta_delay_fast:.1f}h) via green-lane port clearance.\n"
-                f"- **Downstream Intake**: Dock appointment is synchronized with the {dock_label.lower()} to ensure immediate unloading without gate detention."
-            )
-
-        if is_risk_query:
-            guidance_blocks.append(
-                f"### 🛡️ Reliability & Secondary Disruption Shield\n\n"
-                f"- **Plan Confidence Score**: **{plan.reliability_score * 100:.0f}%** operational feasibility.\n"
-                f"- **Safety Enhancement**: SAFEST increases delivery reliability by **+{delta_rel_safe:.0f}%** over CHEAPEST by securing a vetted Tier-1 carrier and dedicated intake slot.\n"
-                f"- **Buffer Allocation**: A 45-minute staging contingency window has been embedded into warehouse intake to absorb expressway traffic variances."
-            )
-
-        if is_resource_query and not is_choice_query:
-            guidance_blocks.append(
-                f"### 🚛 Resource Allocation Assessment\n\n"
-                f"- **Assigned Carrier**: {carrier_label} (verified maintenance clearance and active driver duty cycle).\n"
-                f"- **Port Facility**: {port_label}.\n"
-                f"- **Warehouse Intake Bay**: {dock_label}."
-            )
-
-        guidance_text = "\n\n".join(guidance_blocks)
-
+        plans = {p.category: p for p in (all_plans or [])}
+        plans[plan.category] = plan
+        rows = []
+        for category in (PlanCategory.CHEAPEST, PlanCategory.FASTEST, PlanCategory.SAFEST):
+            option = plans.get(category)
+            if option is None:
+                rows.append(f"| {category.value} | Not supplied | — | — |")
+            else:
+                rows.append(f"| {category.value} | ₹{option.total_cost_inr:,.2f} | +{option.total_delay_hours:.1f}h | {option.reliability_score * 100:.0f}% |")
+        breakdown = "\n".join(f"- **{key.title()}**: ₹{value:,.2f}" for key, value in (plan.cost_breakdown or {}).items())
+        cheap, fast = plans.get(PlanCategory.CHEAPEST), plans.get(PlanCategory.FASTEST)
+        breakeven = "Not calculated: both plans and a positive delay difference are required."
+        if cheap and fast and cheap.total_delay_hours > fast.total_delay_hours:
+            premium = fast.total_cost_inr - cheap.total_cost_inr
+            hours = cheap.total_delay_hours - fast.total_delay_hours
+            breakeven = f"Indicative operating-fee premium ₹{premium:,.2f} / {hours:.1f}h = ₹{premium / hours:,.2f}/h. Actual SLA penalties depend on the contractual deadline."
         return (
-            f"### 🎯 Operational Decision & Strategic Recommendation\n\n"
-            f"In response to operator inquiry regarding *\"{user_query}\"* under active disruption **{disruption.description}** "
-            f"(+{disruption.delay_hours:.1f}h delay on `{disruption.source_entity_id}`):\n\n"
-            f"#### 📊 Multi-Agent Pareto Trade-Off Matrix\n"
-            f"| Recovery Option | Est. Total Cost | Net Delay | Reliability | Operational Strategic Focus |\n"
-            f"| :--- | :--- | :--- | :--- | :--- |\n"
-            f"| **💰 CHEAPEST** | **₹{cheapest.total_cost_inr:,.2f}** | +{cheapest.total_delay_hours:.1f}h | {cheapest.reliability_score * 100:.0f}% | Maximum margin protection; best when SLA penalties < ₹{breakeven_sla:,.0f}/h |\n"
-            f"| **⚡ FASTEST** | **₹{fastest.total_cost_inr:,.2f}** | **+{fastest.total_delay_hours:.1f}h** | {fastest.reliability_score * 100:.0f}% | Expedited recovery; best when customer SLA penalties > ₹{breakeven_sla:,.0f}/h |\n"
-            f"| **🛡️ SAFEST** | **₹{safest.total_cost_inr:,.2f}** | +{safest.total_delay_hours:.1f}h | **{safest.reliability_score * 100:.0f}%** | Guaranteed slot certainty; eliminates secondary breakdown & demurrage |\n\n"
-            f"---\n\n"
-            f"{guidance_text}\n\n"
-            f"---\n\n"
-            f"### 📋 Recommended Operator Action\n"
-            f"1. **Current Plan Selected**: You are evaluating the **{plan.category.value}** route "
-            f"(Est. Cost: **₹{plan.total_cost_inr:,.2f}**, Net Delay: **+{plan.total_delay_hours:.1f}h**, Confidence: **{plan.reliability_score * 100:.0f}%**).\n"
-            f"2. **Operational Recommendation**: If customer late penalties exceed **₹{breakeven_sla:,.0f}/hr**, switch to **FASTEST** above; "
-            f"otherwise, execute **{plan.category.value}** (or select **SAFEST** to guarantee 95%+ certainty).\n"
-            f"3. Click **✅ Approve & Commit Plan** below to dispatch automated bookings across Port, Carrier, and Warehouse agents."
+            "### 🎯 Operational Decision & Strategic Recommendation\n\n"
+            f"Active shipment: **{disruption.source_entity_id}**, {disruption.description}.\n\n"
+            "#### Multi-Agent Pareto Trade-Off Matrix\n"
+            "| Recovery Option | Operating Fee | Coordinator Delay | Reliability |\n"
+            "| :--- | ---: | ---: | ---: |\n" + "\n".join(rows) + "\n\n"
+            "### Why Choose Which Option?\n"
+            "CHEAPEST minimizes the negotiated operating fee; FASTEST minimizes the coordinator delay estimate; SAFEST maximizes the modeled reliability. Missing alternatives are not fabricated.\n\n"
+            f"**SLA Penalty Breakeven:** {breakeven}\n\n"
+            f"### Financial Breakdown — {plan.category.value}\n"
+            f"Recovery operating fee: **₹{plan.total_cost_inr:,.2f}**.\n{breakdown}\n\n"
+            "Fees exclude residual SLA penalties. Comparing an operating fee with unmitigated exposure does not establish net savings.\n\n"
+            f"Selected resources: {plan.port_slot_id}, {plan.carrier_slot_id}, {plan.warehouse_slot_id}."
         )
 
     def parse_text_event(self, raw_text: str) -> Dict[str, Any]:
@@ -618,7 +492,7 @@ class LLMExplainer:
                     decision_taken = (
                         f"The primary driver remains on standby to wait out the highway delay (+{disruption.delay_hours:.1f}h) "
                         f"without hiring an expensive backup truck, while the destination warehouse reschedules intake to tomorrow's "
-                        f"regular morning shift to avoid ₹1,800/hr night overtime wages."
+                        f"regular morning shift to avoid night overtime wages at the applied tariff."
                     )
                     why_choose = (
                         "Best choice for non-perishable general freight when the customer has a flexible receiving schedule "
@@ -627,7 +501,7 @@ class LLMExplainer:
                 else:
                     decision_taken = (
                         f"The coordinator absorbed the highway delay (+{disruption.delay_hours:.1f}h) by keeping the original truck on standby "
-                        f"until traffic cleared—avoiding ₹8,500+ emergency fleet replacement surcharges—and moving warehouse intake to an off-peak morning bay."
+                        f"until traffic cleared—avoiding emergency fleet replacement surcharges—and moving warehouse intake to an off-peak morning bay."
                     )
                     why_choose = (
                         "Recommended for non-urgent shipments where contractual late delivery penalties are minor or waived, "
@@ -660,7 +534,7 @@ class LLMExplainer:
                         f"via open expressway bypass lanes, while the destination warehouse activated a priority overtime evening dock door to unload cargo tonight."
                     )
                     why_choose = (
-                        "Essential when customer contractual late-delivery penalties exceed ₹2,000/hour or when shipping high-value "
+                        "Essential when customer contractual late-delivery penalties exceed the additional recovery operating fee or when shipping high-value "
                         "Just-in-Time components where delayed delivery halts a factory production line."
                     )
                 else:
@@ -717,7 +591,7 @@ class LLMExplainer:
                     f"#### ✅ Pros\n"
                     f"- **Highest Operational Certainty**: Delivers an industry-leading **{rel}** execution reliability score with built-in route buffer.\n"
                     f"- **Guaranteed Gate Clearance**: Pre-booked morning bay guarantees zero waiting at the warehouse gate and prevents driver overtime penalties.\n"
-                    f"- **Balanced Cost**: Absorbs just **{cost}**, matching lowest expenditure while maximizing schedule certainty.\n\n"
+                    f"- **Balanced Cost**: Absorbs just **{cost}**, the negotiated operating fee, excluding residual penalties.\n\n"
                     f"#### ⚠️ Cons\n"
                     f"{timing_con}\n"
                     f"- **Customer Notice Needed**: Consignee receiving staff must be notified to prepare for the 8:00 AM morning arrival slot."
@@ -731,8 +605,8 @@ class LLMExplainer:
                 if variant == 0:
                     decision_taken = (
                         f"Road transit arrived on schedule; to bypass destination dock queues (+{disruption.delay_hours:.1f}h), the truck is held overnight in the "
-                        f"secure depot yard, rescheduling offloading to tomorrow's regular morning shift bay to save ₹1,800/hr night overtime wages "
-                        f"and waive the ₹12,500 missed-slot penalty."
+                        f"secure depot yard, rescheduling offloading to tomorrow's regular morning shift bay to save night overtime wages at the applied tariff "
+                        f"and waive the missed-slot penalty at the applied tariff."
                     )
                     why_choose = (
                         "Best choice when freight can safely stage overnight in the secure depot yard and avoiding dock overtime surcharges is prioritized."
@@ -816,7 +690,7 @@ class LLMExplainer:
                     f"#### ✅ Pros\n"
                     f"- **Maximum Intake Reliability**: Delivers an industry-leading **{rel}** intake clearance certainty.\n"
                     f"- **Zero Demurrage Risk**: Pre-booked morning bay eliminates driver gate waiting, trailer detention fees, and bay rejection.\n"
-                    f"- **Balanced Financials**: Absorbs just **{cost}**, balancing cost savings with guaranteed slot execution.\n\n"
+                    f"- **Balanced Financials**: Absorbs just **{cost}**, the negotiated operating fee, excluding residual penalties.\n\n"
                     f"#### ⚠️ Cons\n"
                     f"- **Next-Day Morning Arrival**: Unloading is scheduled for tomorrow morning (8:00 AM).\n"
                     f"- **Slot Compliance**: Carrier must arrive strictly within the designated 8:00 AM morning receiving window."
@@ -831,7 +705,7 @@ class LLMExplainer:
                 if variant == 0:
                     decision_taken = (
                         f"The coordinator absorbed the {port_name.lower()} (+{disruption.delay_hours:.1f}h) by clearing cargo through standard berth queues "
-                        f"without paying rush crane fees, placing the primary carrier on standard standby (avoiding ₹8,500+ emergency fleet replacement surcharges), "
+                        f"without paying rush crane fees, placing the primary carrier on standard standby (avoiding emergency fleet replacement surcharges), "
                         f"and booking tomorrow's regular morning warehouse bay."
                     )
                     why_choose = (
@@ -874,7 +748,7 @@ class LLMExplainer:
                         f"hot-dispatching an emergency relief backup truck, and booking an expedited warehouse evening dock door."
                     )
                     why_choose = (
-                        "Best choice when contractual customer SLA breach penalties exceed ₹2,000/hour or when shipping high-value, "
+                        "Best choice when contractual customer SLA breach penalties exceed the additional recovery operating fee or when shipping high-value, "
                         "perishable, or Just-in-Time assembly components where delivery delay causes immediate downtime."
                     )
                 else:
@@ -931,7 +805,7 @@ class LLMExplainer:
                     f"#### ✅ Pros\n"
                     f"- **Highest Operational Certainty**: Delivers an industry-leading **{rel}** execution reliability score.\n"
                     f"- **Zero Demurrage Risk**: Pre-booked morning bay eliminates warehouse rejection, driver overtime, and gate demurrage.\n"
-                    f"- **Balanced Economics**: Absorbs just **{cost}**, matching lowest expenditure while maximizing schedule reliability.\n\n"
+                    f"- **Balanced Economics**: Absorbs just **{cost}**, the negotiated operating fee, excluding residual penalties.\n\n"
                     f"#### ⚠️ Cons\n"
                     f"{timing_con}\n"
                     f"- **Receiving Alignment**: Customer warehouse receiving team must be notified to prepare for the 8:00 AM morning arrival."

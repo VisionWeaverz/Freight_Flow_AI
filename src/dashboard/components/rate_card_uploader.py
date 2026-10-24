@@ -199,15 +199,15 @@ def render_rates_summary_table(active_rates: dict):
         
         if diff > 0:
             pct = (diff / baseline) * 100
-            delta_html = f'<span style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 12px;">🔺 +₹{diff:,.0f} (+{pct:.0f}%)</span>'
-            active_html = f'<span style="color: #4ade80; font-weight: 700; font-size: 14px;">₹ {current:,.0f} <span style="font-size: 11px; color: #94a3b8;">{unit_suffix}</span></span>'
+            delta_html = f'<span style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 12px;">🔺 +₹{diff:,.2f} (+{pct:.0f}%)</span>'
+            active_html = f'<span style="color: #4ade80; font-weight: 700; font-size: 14px;">₹ {current:,.2f} <span style="font-size: 11px; color: #94a3b8;">{unit_suffix}</span></span>'
         elif diff < 0:
             pct = (abs(diff) / baseline) * 100
-            delta_html = f'<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 12px;">🔻 -₹{abs(diff):,.0f} (-{pct:.0f}%)</span>'
-            active_html = f'<span style="color: #f87171; font-weight: 700; font-size: 14px;">₹ {current:,.0f} <span style="font-size: 11px; color: #94a3b8;">{unit_suffix}</span></span>'
+            delta_html = f'<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 12px;">🔻 -₹{abs(diff):,.2f} (-{pct:.0f}%)</span>'
+            active_html = f'<span style="color: #f87171; font-weight: 700; font-size: 14px;">₹ {current:,.2f} <span style="font-size: 11px; color: #94a3b8;">{unit_suffix}</span></span>'
         else:
             delta_html = '<span style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.25); padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 500;">0 (Benchmark Baseline)</span>'
-            active_html = f'<span style="color: #f8fafc; font-weight: 600; font-size: 14px;">₹ {current:,.0f} <span style="font-size: 11px; color: #94a3b8;">{unit_suffix}</span></span>'
+            active_html = f'<span style="color: #f8fafc; font-weight: 600; font-size: 14px;">₹ {current:,.2f} <span style="font-size: 11px; color: #94a3b8;">{unit_suffix}</span></span>'
 
         table_rows.append(f"""
         <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
@@ -216,7 +216,7 @@ def render_rates_summary_table(active_rates: dict):
                 <div style="font-size: 11px; color: #94a3b8; font-weight: 400; margin-top: 2px;">{meta['description']}</div>
             </td>
             <td style="padding: 10px 14px;">{active_html}</td>
-            <td style="padding: 10px 14px; color: #94a3b8; font-size: 13px;">₹ {baseline:,.0f} <span style="font-size: 11px;">{unit_suffix}</span></td>
+            <td style="padding: 10px 14px; color: #94a3b8; font-size: 13px;">₹ {baseline:,.2f} <span style="font-size: 11px;">{unit_suffix}</span></td>
             <td style="padding: 10px 14px;">{delta_html}</td>
         </tr>
         """)

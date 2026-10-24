@@ -3,7 +3,6 @@
 import streamlit as st
 from datetime import datetime
 import plotly.graph_objects as go
-from src.cascade.impact_analyzer import compute_cascade_impact
 from src.risk_engine.scorer import predict_risk
 from src.database.rate_manager import is_custom_pricing_active
 
@@ -78,79 +77,11 @@ def build_plotly_cascade_diagram(nodes):
 def render_cascade_view():
     """Renders interactive disruption simulation, risk prediction, and cascade impact graph."""
     
-    # Preset quick-loader
-    st.markdown("#### 🚢 Select Operational Consignment & Telemetry")
-    col_input1, col_input2, col_input3, col_btn = st.columns([2, 1.2, 1.2, 1.2])
-
-    with col_input1:
-        shipment_options = [
-            "SHP-1005 (Flagship AutoParts Demo)",
-            "SHP-1001 (Electronics Whitefield)",
-            "SHP-1002 (Textiles Tirupur)",
-            "SHP-1003 (Auto Components Pune)",
-            "SHP-1004 (Pharma Hyderabad)"
-        ]
-        cur_shp = st.session_state.get("cascade_shipment_id", shipment_options[0])
-        idx_shp = shipment_options.index(cur_shp) if cur_shp in shipment_options else 0
-        shipment_id = st.selectbox(
-            "Consignment ID:",
-            shipment_options,
-            index=idx_shp,
-            key="cascade_shipment_id"
-        )
-        actual_shp_id = shipment_id.split(" ")[0]
-        
-    with col_input2:
-        disruption_options = [
-            "PORT_CONGESTION",
-            "VESSEL_DELAY",
-            "TRUCK_BREAKDOWN",
-            "TRAFFIC_INCIDENT",
-            "WAREHOUSE_BOTTLENECK"
-        ]
-        cur_dt = st.session_state.get("cascade_disruption_type", disruption_options[0])
-        idx_dt = disruption_options.index(cur_dt) if cur_dt in disruption_options else 0
-        disruption_type = st.selectbox(
-            "Disruption Type:",
-            disruption_options,
-            index=idx_dt,
-            key="cascade_disruption_type"
-        )
-
-    with col_input3:
-        delay_label = {
-            "PORT_CONGESTION": "Port Berth Delay (h):",
-            "VESSEL_DELAY": "Vessel Delay (h):",
-            "TRUCK_BREAKDOWN": "Breakdown Delay (h):",
-            "TRAFFIC_INCIDENT": "Highway Jam (h):",
-            "WAREHOUSE_BOTTLENECK": "Dock Delay (h):",
-        }.get(disruption_type, "Delay Duration (h):")
-        delay_hours = st.slider(delay_label, min_value=0.5, max_value=8.0, value=4.0, step=0.5)
-
-    with col_btn:
-        st.write("")
-        st.write("")
-        trigger = st.button("⚡ Run Cascade Analysis", type="primary", use_container_width=True)
-
-    # Automatically recompute whenever consignment, delay slider, or disruption type changes
-    current_inputs = (actual_shp_id, delay_hours, disruption_type)
-    if trigger or st.session_state.get("cascade_inputs") != current_inputs:
-        score, risk_level = predict_risk(actual_shp_id, new_delay_hours=delay_hours, congestion=0.75)
-        impact = compute_cascade_impact(actual_shp_id, added_delay_hours=delay_hours, disruption_type=disruption_type)
-        
-        st.session_state["cascade_inputs"] = current_inputs
-        st.session_state["current_impact"] = impact
-        st.session_state["current_risk_score"] = score
-        st.session_state["current_risk_level"] = risk_level
-        st.session_state["current_shipment_id"] = actual_shp_id
-        st.session_state["current_delay_hours"] = delay_hours
-        st.session_state["current_disruption_type"] = disruption_type
-        # Invalidate cached plans so Tab 2 regenerates fresh multi-agent plans
-        if "negotiated_plans" in st.session_state:
-            del st.session_state["negotiated_plans"]
-        if "selected_plan" in st.session_state:
-            del st.session_state["selected_plan"]
-
+    actual_shp_id = st.session_state["current_shipment_id"]
+    delay_hours = st.session_state["current_delay_hours"]
+    disruption_type = st.session_state["current_disruption_type"]
+    score, _ = predict_risk(actual_shp_id, new_delay_hours=delay_hours, congestion=0.75)
+    st.session_state["current_risk_score"] = score
     impact = st.session_state.get("current_impact")
     if impact:
         st.divider()
@@ -241,7 +172,7 @@ def render_cascade_view():
         penalties = impact.penalty_breakdown or {}
         p_df = [
             {"Milestone / Penalty Surcharge": k.replace("_", " ").title(), "Financial Exposure (INR)": f"₹ {v:,.2f}"}
-            for k, v in penalties.items()
+            for k, v in penalties.items() if k != "total_financial_risk_inr"
         ]
         st.dataframe(p_df, use_container_width=True, hide_index=True)
 

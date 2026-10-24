@@ -1,8 +1,6 @@
 """Side-by-side comparison of Top 3 recovery plans (Cheapest, Fastest, Safest)."""
 
 import streamlit as st
-from src.agents.coordinator import CentralCoordinator
-from src.cascade.impact_analyzer import compute_cascade_impact
 from src.common.schemas import PlanCategory
 
 
@@ -51,7 +49,7 @@ def get_human_plan_attributes(plan, impact, cat: PlanCategory, disruption_type: 
                 truck_desc = "Inspected carrier assigned with live GPS telemetry to ensure zero secondary breakdowns"
             else:
                 truck_title = "On-Site Roadside Repair"
-                truck_desc = "Mobile mechanic dispatched to fix vehicle on-site; avoids hiring ₹8,500 replacement fleet"
+                truck_desc = "Mobile mechanic dispatched to fix vehicle on-site; avoids hiring replacement fleet"
         else:  # TRAFFIC_INCIDENT
             if "REPLACEMENT" in c_slot or cat == PlanCategory.FASTEST:
                 truck_title = "Express Bypass Carrier"
@@ -125,34 +123,32 @@ def get_human_plan_attributes(plan, impact, cat: PlanCategory, disruption_type: 
         rel_label = f"<b>{rel_pct:.0f}%</b> (Moderate Certainty • Tight Schedule)"
 
     # 5. Operational Net Strategy (Tailored dynamically to disruption type)
-    financial_risk = getattr(impact, "financial_risk_inr", 17750.0)
-    savings = max(0, financial_risk - plan.total_cost_inr)
 
     if is_road:
         if dtype == "TRUCK_BREAKDOWN":
             if cat == PlanCategory.CHEAPEST:
-                tradeoff = f"💡 <b>Strategy:</b> Resolves breakdown via on-site repair and defers to morning intake, avoiding replacement fleet fees (saves ₹{savings:,.0f})."
+                tradeoff = f"💡 <b>Strategy:</b> Resolves breakdown via on-site repair and defers to morning intake, avoiding replacement fleet fees (operating fee ₹{plan.total_cost_inr:,.2f})."
             elif cat == PlanCategory.FASTEST:
                 tradeoff = "💡 <b>Strategy:</b> Swaps in emergency backup truck immediately to eliminate breakdown delay (0h lag) and protect customer delivery SLA."
             else:
                 tradeoff = "💡 <b>Strategy:</b> Deploys vetted backup carrier and reserved morning bay for 84%+ schedule resilience."
         else:  # TRAFFIC_INCIDENT
             if cat == PlanCategory.CHEAPEST:
-                tradeoff = f"💡 <b>Strategy:</b> Waits out expressway gridlock without hiring surge-rate trucks, preserving operating margins (saves ₹{savings:,.0f})."
+                tradeoff = f"💡 <b>Strategy:</b> Waits out expressway gridlock without hiring surge-rate trucks, preserving operating margins (operating fee ₹{plan.total_cost_inr:,.2f})."
             elif cat == PlanCategory.FASTEST:
                 tradeoff = "💡 <b>Strategy:</b> Bypasses highway congestion via relief carrier and expedited evening bay to protect delivery SLA (0h lag)."
             else:
                 tradeoff = "💡 <b>Strategy:</b> Avoids unpredictable highway traffic via GPS detour and pre-booked morning bay for 84%+ delivery certainty."
     elif is_whs:
         if cat == PlanCategory.CHEAPEST:
-            tradeoff = f"💡 <b>Strategy:</b> Avoids expensive evening dock overtime wages by staging overnight until regular morning intake (saves ₹{savings:,.0f})."
+            tradeoff = f"💡 <b>Strategy:</b> Avoids expensive evening dock overtime wages by staging overnight until regular morning intake (operating fee ₹{plan.total_cost_inr:,.2f})."
         elif cat == PlanCategory.FASTEST:
             tradeoff = "💡 <b>Strategy:</b> Clears warehouse dock congestion tonight via priority overtime crew to preserve same-day delivery SLAs."
         else:
             tradeoff = "💡 <b>Strategy:</b> Pre-books reserved morning dock bay with dedicated equipment to completely eliminate dock demurrage."
     else:  # Port / Maritime
         if cat == PlanCategory.CHEAPEST:
-            tradeoff = f"💡 <b>Strategy:</b> Clears container through standard berth queues without rush crane fees, preserving profit margins (saves ₹{savings:,.0f})."
+            tradeoff = f"💡 <b>Strategy:</b> Clears container through standard berth queues without rush crane fees, preserving profit margins (operating fee ₹{plan.total_cost_inr:,.2f})."
         elif cat == PlanCategory.FASTEST:
             tradeoff = "💡 <b>Strategy:</b> Fast-tracks container discharge via green-lane berth and expedited carrier to eliminate delay (0h lag) and protect delivery SLA."
         else:
@@ -170,21 +166,17 @@ def get_human_plan_attributes(plan, impact, cat: PlanCategory, disruption_type: 
         "dock_desc": dock_desc,
         "rel_label": rel_label,
         "tradeoff": tradeoff,
-        "savings": savings,
     }
 
 
 def render_plan_comparator():
     """Renders trade-off comparison between Cheapest, Fastest, and Safest plans."""
-    impact = st.session_state.get("current_impact")
-    if not impact:
-        impact = compute_cascade_impact("SHP-1005", added_delay_hours=4.0)
-        st.session_state["current_impact"] = impact
-        st.session_state["current_shipment_id"] = "SHP-1005"
-
-    coordinator = CentralCoordinator()
-    plans = coordinator.run_recovery_negotiation(impact)
+    scenario = st.session_state["current_scenario"]
+    impact = scenario["impact"]
+    plans = scenario["plans"]
     st.session_state["negotiated_plans"] = plans
+    if impact.financial_risk_inr == 0:
+        st.info("This scenario incurs no modeled contractual penalties. The optional recovery plans below add operating fees; intervention is not required to avoid financial exposure.")
 
     # Active Disruption Context Pill linking Tab 1 to Tab 2
     shipment_id = st.session_state.get("current_shipment_id", "SHP-1005")
@@ -196,13 +188,13 @@ def render_plan_comparator():
         f"""
         <div style="background:rgba(2, 132, 199, 0.08); border:1.5px solid rgba(2, 132, 199, 0.3); border-radius:10px; padding:10px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <div>
-                <span style="font-size:11px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">🎯 Active Target (from Tab 1):</span>
+                <span style="font-size:11px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">🎯 Active Shared Scenario:</span>
                 <span style="font-size:14px; font-weight:800; margin-left:6px;">{shipment_id}</span>
                 <span style="font-size:13px; opacity:0.85; margin-left:8px;">• {disruption_type.replace('_', ' ').title()} (+{delay_hours:.1f}h)</span>
             </div>
             <div>
-                <span style="font-size:12px; opacity:0.8;">Baseline Unmitigated Damage:</span>
-                <span style="font-size:14px; font-weight:800; color:#ef4444; margin-left:6px;">₹{risk_inr:,.0f}</span>
+                <span style="font-size:12px; opacity:0.8;">Unmitigated Contractual Exposure:</span>
+                <span style="font-size:14px; font-weight:800; color:#ef4444; margin-left:6px;">₹{risk_inr:,.2f}</span>
             </div>
         </div>
         """,
@@ -210,7 +202,7 @@ def render_plan_comparator():
     )
 
     st.markdown("#### 🤝 Autonomous Multi-Agent Negotiation Outcomes")
-    st.caption("The Central Coordinator resolved 3 rounds between Port, Carrier, and Warehouse agents, producing 3 non-dominated Pareto alternatives:")
+    st.caption("Plan prices are recovery operating fees (port + carrier + warehouse); residual SLA penalties are excluded. The Central Coordinator resolved 3 rounds between Port, Carrier, and Warehouse agents, producing 3 non-dominated Pareto alternatives:")
 
     cheapest = next((p for p in plans if p.category == PlanCategory.CHEAPEST), plans[0])
     fastest = next((p for p in plans if p.category == PlanCategory.FASTEST), plans[1] if len(plans) > 1 else plans[0])
@@ -249,8 +241,8 @@ def render_plan_comparator():
                     <span style="background:{info_cheap['timing_badge_bg']}; color:{info_cheap['timing_badge_color']}; font-size:10px; font-weight:800; padding:2px 7px; border-radius:8px;">{info_cheap['timing_badge']}</span>
                 </div>
                 <h3 style="margin:4px 0 2px 0; color:#22c55e; font-size:20px;">🟢 Cheapest Plan</h3>
-                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {cheapest.total_cost_inr:,.0f}</div>
-                <p style="font-size:12px; color:#22c55e; font-weight:700; margin:2px 0 10px 0;">💰 Saves ₹{info_cheap['savings']:,.0f} vs. Disruption Damage</p>
+                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {cheapest.total_cost_inr:,.2f}</div>
+                <p style="font-size:12px; color:#22c55e; font-weight:700; margin:2px 0 10px 0;">Recovery operating fee • excludes residual penalties</p>
                 <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:12.5px; line-height:1.45;">
                     <div style="margin-bottom:8px;">
                         <span style="font-weight:700; color:inherit;">⏱️ Schedule:</span> <span style="font-weight:600; color:#38bdf8;">{info_cheap['timing_title']}</span>
@@ -294,7 +286,7 @@ def render_plan_comparator():
                     <span style="background:{info_fast['timing_badge_bg']}; color:{info_fast['timing_badge_color']}; font-size:10px; font-weight:800; padding:2px 7px; border-radius:8px;">{info_fast['timing_badge']}</span>
                 </div>
                 <h3 style="margin:4px 0 2px 0; color:#0ea5e9; font-size:20px;">⚡ Fastest Plan</h3>
-                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {fastest.total_cost_inr:,.0f}</div>
+                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {fastest.total_cost_inr:,.2f}</div>
                 <p style="font-size:12px; color:#0ea5e9; font-weight:700; margin:2px 0 10px 0;">⚡ Immediate Velocity Recovery</p>
                 <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:12.5px; line-height:1.45;">
                     <div style="margin-bottom:8px;">
@@ -339,7 +331,7 @@ def render_plan_comparator():
                     <span style="background:{info_safe['timing_badge_bg']}; color:{info_safe['timing_badge_color']}; font-size:10px; font-weight:800; padding:2px 7px; border-radius:8px;">{info_safe['timing_badge']}</span>
                 </div>
                 <h3 style="margin:4px 0 2px 0; color:#f59e0b; font-size:20px;">🛡️ Safest Plan</h3>
-                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {safest.total_cost_inr:,.0f}</div>
+                <div style="font-size:26px; font-weight:800; color:inherit;">₹ {safest.total_cost_inr:,.2f}</div>
                 <p style="font-size:12px; color:#f59e0b; font-weight:700; margin:2px 0 10px 0;">🛡️ Maximum On-Time Resilience</p>
                 <div style="border-top:1px solid rgba(128, 128, 128, 0.2); padding-top:10px; font-size:12.5px; line-height:1.45;">
                     <div style="margin-bottom:8px;">
