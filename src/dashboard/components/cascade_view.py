@@ -215,3 +215,15 @@ def render_cascade_view():
             for k, v in penalties.items()
         ]
         st.dataframe(p_df, use_container_width=True, hide_index=True)
+
+        st.markdown(
+            f"""
+            <div style="background:rgba(2, 132, 199, 0.08); border:1.5px solid rgba(2, 132, 199, 0.25); border-radius:10px; padding:12px 18px; margin-top:14px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-weight:700; color:#0284c7;">⚡ Next Step: Multi-Agent Disruption Mitigation</span>
+                    <p style="margin:2px 0 0 0; font-size:13px; opacity:0.85;">Switch to <b>Tab 2 (🤝 2. Multi-Agent Recovery & Approval)</b> to view how Port, Carrier, and Warehouse agents autonomously negotiate recovery plans (Cheapest, Fastest, Safest) to resolve this <b>₹{impact.financial_risk_inr:,.0f}</b> baseline risk.</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )

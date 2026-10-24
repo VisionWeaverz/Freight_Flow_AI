@@ -18,6 +18,29 @@ def render_plan_comparator():
     plans = coordinator.run_recovery_negotiation(impact)
     st.session_state["negotiated_plans"] = plans
 
+    # Active Disruption Context Pill linking Tab 1 to Tab 2
+    shipment_id = st.session_state.get("current_shipment_id", "SHP-1005")
+    disruption_type = st.session_state.get("current_disruption_type", "PORT_CONGESTION")
+    delay_hours = getattr(impact, "initial_delay_hours", 4.0)
+    risk_inr = getattr(impact, "financial_risk_inr", 17750.0)
+
+    st.markdown(
+        f"""
+        <div style="background:rgba(2, 132, 199, 0.08); border:1.5px solid rgba(2, 132, 199, 0.3); border-radius:10px; padding:10px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+                <span style="font-size:11px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">🎯 Active Target (from Tab 1):</span>
+                <span style="font-size:14px; font-weight:800; margin-left:6px;">{shipment_id}</span>
+                <span style="font-size:13px; opacity:0.85; margin-left:8px;">• {disruption_type.replace('_', ' ').title()} (+{delay_hours:.1f}h)</span>
+            </div>
+            <div>
+                <span style="font-size:12px; opacity:0.8;">Baseline Unmitigated Damage:</span>
+                <span style="font-size:14px; font-weight:800; color:#ef4444; margin-left:6px;">₹{risk_inr:,.0f}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.markdown("#### 🤝 Autonomous Multi-Agent Negotiation Outcomes")
     st.caption("The Central Coordinator resolved 3 rounds between Port, Carrier, and Warehouse agents, producing 3 non-dominated Pareto alternatives:")
 
