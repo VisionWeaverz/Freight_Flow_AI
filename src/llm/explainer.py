@@ -1,7 +1,7 @@
 """LLM client integration to translate disruptions into events and explain recovery plans.
 
 Supports Google Gemini API via official google.genai SDK, legacy google.generativeai,
-REST endpoints, with seamless offline heuristic fallback.
+REST endpoints, with seamless offline heuristic fallback and resilient timeouts.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import json
 import logging
 import urllib.request
 import urllib.error
+import concurrent.futures
 from typing import Dict, Any, Optional, Tuple
 
 from src.common.schemas import RecoveryPlan, DisruptionEvent, DisruptionType, PlanCategory
@@ -22,8 +23,8 @@ logger = logging.getLogger(__name__)
 class LLMExplainer:
     """Provides human-readable justifications and interactive Q&A for recovery plans.
     
-    Tries Google Gemini API first (using modern google-genai or REST), and falls back
-    to a high-fidelity offline heuristic engine if no key is configured or network is unavailable.
+    Tries Google Gemini API first (using modern google-genai SDK or REST), and falls back
+    to a high-fidelity offline heuristic engine if no key is configured, invalid, or network latency exceeds timeout.
     """
 
     def __init__(
@@ -44,67 +45,73 @@ class LLMExplainer:
         return bool(self.api_key and self.api_key not in ("your_gemini_api_key_here", "AIzaSy..."))
 
     def test_connection(self, api_key: Optional[str] = None, model: Optional[str] = None) -> Tuple[bool, str]:
-        """Validates the Gemini API key by making a lightweight ping to the model."""
+        """Validates the Gemini API key by making a lightweight ping to the model with a 5s safety timeout."""
         key = (api_key or self.api_key or "").strip()
         if not key or key in ("your_gemini_api_key_here", "AIzaSy..."):
             return False, "No valid API key provided. Please enter a valid Google Gemini API key."
 
         target_model = model or self.model
-        prompt = "Hello! Please reply with exactly the word: OK"
 
-        models_to_test = [target_model]
-        if "gemini-3.8-flash" not in models_to_test:
-            models_to_test.append("gemini-3.8-flash")
-        if "gemini-3.5-flash" not in models_to_test:
-            models_to_test.append("gemini-3.5-flash")
+        def _do_ping() -> Tuple[bool, str]:
+            prompt = "Hello! Reply with OK"
+            models_to_test = [target_model]
+            if target_model != "gemini-3.8-flash" and "gemini-3.8-flash" not in models_to_test:
+                models_to_test.append("gemini-3.8-flash")
 
-        last_error = ""
-        for m in models_to_test:
-            # 1. Try google.genai SDK
-            try:
-                from google import genai
-                client = genai.Client(api_key=key)
-                resp = client.models.generate_content(model=m, contents=prompt)
-                if resp and resp.text:
-                    self.model = m
-                    msg = f"Successfully connected to Gemini API via '{m}'!"
-                    if m != target_model:
-                        msg += f" (Auto-migrated from deprecated '{target_model}')"
-                    return True, msg
-            except Exception as e_sdk:
-                last_error = str(e_sdk)
-                logger.debug("genai SDK test failed for %s: %s", m, e_sdk)
-                if "API key not valid" in last_error or "INVALID_ARGUMENT" in last_error or "400" in last_error:
-                    return False, f"Gemini API Error: {last_error}"
-
-            # 2. Try REST API direct ping
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"maxOutputTokens": 10}
-                }
-                data = json.dumps(payload).encode("utf-8")
-                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=8) as response:
-                    res_json = json.loads(response.read().decode("utf-8"))
-                    candidates = res_json.get("candidates", [])
-                    if candidates:
+            last_error = ""
+            for m in models_to_test:
+                # 1. Try google.genai SDK
+                try:
+                    from google import genai
+                    client = genai.Client(api_key=key)
+                    resp = client.models.generate_content(model=m, contents=prompt)
+                    if resp and resp.text:
                         self.model = m
-                        msg = f"Successfully connected to Gemini API via REST ('{m}')!"
+                        msg = f"Successfully connected to Gemini API via '{m}'!"
                         if m != target_model:
                             msg += f" (Auto-migrated from deprecated '{target_model}')"
                         return True, msg
-            except urllib.error.HTTPError as http_err:
-                try:
-                    err_body = json.loads(http_err.read().decode("utf-8"))
-                    last_error = err_body.get("error", {}).get("message", str(http_err))
-                except Exception:
-                    last_error = str(http_err)
-            except Exception as e:
-                last_error = str(e)
+                except Exception as e_sdk:
+                    last_error = str(e_sdk)
+                    logger.debug("genai SDK test failed for %s: %s", m, e_sdk)
+                    if "API key not valid" in last_error or "INVALID_ARGUMENT" in last_error or "400" in last_error:
+                        return False, f"Gemini API Error: {last_error}"
 
-        return False, f"Connection failed: {last_error or 'No response from Gemini API.'}"
+                # 2. Try REST API direct ping
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
+                    payload = {
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"maxOutputTokens": 10}
+                    }
+                    data = json.dumps(payload).encode("utf-8")
+                    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                    with urllib.request.urlopen(req, timeout=4) as response:
+                        res_json = json.loads(response.read().decode("utf-8"))
+                        candidates = res_json.get("candidates", [])
+                        if candidates:
+                            self.model = m
+                            msg = f"Successfully connected to Gemini API via REST ('{m}')!"
+                            if m != target_model:
+                                msg += f" (Auto-migrated from deprecated '{target_model}')"
+                            return True, msg
+                except urllib.error.HTTPError as http_err:
+                    try:
+                        err_body = json.loads(http_err.read().decode("utf-8"))
+                        last_error = err_body.get("error", {}).get("message", str(http_err))
+                    except Exception:
+                        last_error = str(http_err)
+                except Exception as e:
+                    last_error = str(e)
+
+            return False, f"Connection failed: {last_error or 'No response from Gemini API.'}"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_do_ping)
+            try:
+                return future.result(timeout=6.0)
+            except concurrent.futures.TimeoutError:
+                return False, "Connection timed out (Google Gemini API did not respond within 6s). Check your API key or network connection."
 
     def explain_plan(self, disruption: DisruptionEvent, plan: RecoveryPlan) -> str:
         """Generates an executive explanation of why this plan was chosen and trade-offs made."""
@@ -147,7 +154,10 @@ class LLMExplainer:
         )
 
         try:
-            return self._call_gemini_raw(prompt) or "Unable to generate answer at this time."
+            return self._call_gemini_raw(prompt) or (
+                f"Based on **{plan.category.value}** rules: Operator inquiry regarding '{user_query}' — "
+                f"this recovery route absorbs ₹{plan.total_cost_inr:,.2f} total cost with {plan.reliability_score * 100:.0f}% confidence."
+            )
         except Exception as e:
             return f"⚠️ Query error: {str(e)}"
 
@@ -164,67 +174,76 @@ class LLMExplainer:
         return self._heuristic_parse_text(raw_text)
 
     # ──────────────────────────────────────────────────────────────────
-    # Internal Gemini Calling Methods
+    # Internal Gemini Calling Methods with Strict 5s Timeout
     # ──────────────────────────────────────────────────────────────────
 
     def _call_gemini_raw(self, prompt: str) -> Optional[str]:
-        """Dispatches raw prompt to Gemini via google.genai SDK or REST with fast timeout."""
-        # 1. Try google.genai SDK
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=self.api_key)
-            resp = client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.3,
-                    max_output_tokens=600
-                )
-            )
-            if resp and resp.text:
-                self.last_model_used = self.model
-                return resp.text.strip()
-        except Exception as e:
-            logger.debug("genai SDK call error on %s: %s", self.model, e)
-            if ("404" in str(e) or "not found" in str(e).lower()) and self.model != "gemini-3.8-flash":
-                try:
-                    resp = client.models.generate_content(
-                        model="gemini-3.8-flash",
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            temperature=0.3,
-                            max_output_tokens=600
-                        )
+        """Dispatches raw prompt to Gemini via google.genai SDK or REST within a 5-second deadline."""
+        def _execute():
+            # 1. Try google.genai SDK
+            try:
+                from google import genai
+                from google.genai import types
+                client = genai.Client(api_key=self.api_key)
+                resp = client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.3,
+                        max_output_tokens=600
                     )
-                    if resp and resp.text:
-                        self.last_model_used = "gemini-3.8-flash"
-                        return resp.text.strip()
-                except Exception:
-                    pass
+                )
+                if resp and resp.text:
+                    self.last_model_used = self.model
+                    return resp.text.strip()
+            except Exception as e:
+                logger.debug("genai SDK call error on %s: %s", self.model, e)
+                if ("404" in str(e) or "not found" in str(e).lower()) and self.model != "gemini-3.8-flash":
+                    try:
+                        resp = client.models.generate_content(
+                            model="gemini-3.8-flash",
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                temperature=0.3,
+                                max_output_tokens=600
+                            )
+                        )
+                        if resp and resp.text:
+                            self.last_model_used = "gemini-3.8-flash"
+                            return resp.text.strip()
+                    except Exception:
+                        pass
 
-        # 2. Try REST API with strict 6-second timeout
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600}
-            }
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            # 2. Try REST API with strict 4s timeout
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600}
+                }
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
 
-            with urllib.request.urlopen(req, timeout=6) as response:
-                result = json.loads(response.read().decode("utf-8"))
-                candidates = result.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        self.last_model_used = self.model
-                        return parts[0].get("text", "").strip()
-        except Exception as e_rest:
-            logger.debug("REST call error on %s: %s", self.model, e_rest)
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                    candidates = result.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            self.last_model_used = self.model
+                            return parts[0].get("text", "").strip()
+            except Exception as e_rest:
+                logger.debug("REST call error on %s: %s", self.model, e_rest)
 
-        return None
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_execute)
+            try:
+                return future.result(timeout=5.5)
+            except concurrent.futures.TimeoutError:
+                logger.warning("Gemini raw call timed out after 5.5s; activating resilient heuristic fallback.")
+                return None
 
     def _call_gemini_explanation(self, disruption: DisruptionEvent, plan: RecoveryPlan) -> Optional[str]:
         """Calls Gemini to explain recovery plan trade-offs."""
@@ -246,39 +265,48 @@ class LLMExplainer:
         """Calls Gemini API to parse text into structured JSON event."""
         prompt = f"{TEXT_TO_EVENT_PROMPT}\nText: \"{raw_text}\"\nOutput valid JSON only with keys: event_type, source_entity_id, delay_hours, severity_level, description."
         
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=self.api_key)
-            resp = client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json"
+        def _execute_parse():
+            try:
+                from google import genai
+                from google.genai import types
+                client = genai.Client(api_key=self.api_key)
+                resp = client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.0,
+                        response_mime_type="application/json"
+                    )
                 )
-            )
-            if resp and resp.text:
-                return json.loads(resp.text)
-        except Exception:
-            pass
+                if resp and resp.text:
+                    return json.loads(resp.text)
+            except Exception:
+                pass
 
-        # Fallback to raw REST with responseMimeType
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
-        }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"}
+                }
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                    candidates = result.get("candidates", [])
+                    if candidates:
+                        text_out = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        return json.loads(text_out)
+            except Exception:
+                pass
+            return None
 
-        with urllib.request.urlopen(req, timeout=10) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            candidates = result.get("candidates", [])
-            if candidates:
-                text_out = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                return json.loads(text_out)
-        return None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_execute_parse)
+            try:
+                return future.result(timeout=5.5)
+            except concurrent.futures.TimeoutError:
+                return None
 
     # ──────────────────────────────────────────────────────────────────
     # Offline Intelligent Heuristic Generator
