@@ -75,6 +75,8 @@ def test_compute_cascade_impact_truck_breakdown_shp_1001():
 
     assert impact.nodes[2].node_type == "WAREHOUSE"
     assert impact.nodes[3].node_type == "CUSTOMER"
+    assert impact.nodes[3].status == "BREACHED"
+    assert impact.nodes[3].details["sla_breached"] is True
     assert impact.financial_risk_inr > 0
 
 
@@ -92,4 +94,6 @@ def test_compute_cascade_impact_warehouse_bottleneck_shp_1001():
     assert impact.nodes[2].delay_hours == 4.0
 
     assert impact.nodes[3].node_type == "CUSTOMER"
+    assert impact.nodes[3].status == "BREACHED"
+    assert impact.nodes[3].details["sla_breached"] is True
     assert impact.financial_risk_inr > 0

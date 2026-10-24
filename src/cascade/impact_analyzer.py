@@ -259,7 +259,6 @@ def build_cascade_graph(
 
     # 4. Customer Promise Node
     cust_promise_time = parse_timestamp(shp["customer_promise_time"])
-    dock_turnaround_hours = 2.0 if slot_missed else 1.0
     projected_customer_delivery = whs_projected_arrival + timedelta(hours=dock_turnaround_hours)
 
     sla_breached = projected_customer_delivery > cust_promise_time
