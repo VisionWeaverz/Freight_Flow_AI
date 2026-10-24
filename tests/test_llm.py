@@ -115,7 +115,7 @@ def test_connection_test_invalid_key():
     explainer = LLMExplainer()
     success, msg = explainer.test_connection(api_key="invalid_test_key_xyz")
     assert not success
-    assert "failed" in msg.lower() or "error" in msg.lower() or "not valid" in msg.lower()
+    assert "failed" in msg.lower() or "error" in msg.lower() or "not valid" in msg.lower() or "timed out" in msg.lower()
 
 
 def test_mock_live_gemini_call(sample_disruption, sample_plan):

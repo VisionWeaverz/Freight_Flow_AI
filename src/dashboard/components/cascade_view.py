@@ -236,6 +236,17 @@ def render_cascade_view():
                     unsafe_allow_html=True
                 )
 
+        # -------------------------------------------------------------
+        # Live Geospatial Corridor & Dynamic Rerouting Simulator
+        # -------------------------------------------------------------
+        from src.dashboard.components.corridor_map import render_corridor_simulation
+        render_corridor_simulation(
+            actual_shp_id=actual_shp_id,
+            delay_hours=delay_hours,
+            disruption_type=disruption_type,
+            impact=impact
+        )
+
         # Penalties Table & Details
         st.markdown("#### 💰 Downstream Financial Penalty Breakdown")
         penalties = impact.penalty_breakdown or {}
