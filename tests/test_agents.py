@@ -9,6 +9,7 @@ from src.agents.coordinator import (
 )
 from src.cascade.impact_analyzer import compute_cascade_impact
 from src.orchestrator import FreightFlowOrchestrator
+from src.llm.explainer import LLMExplainer
 from src.common.schemas import (
     DisruptionEvent,
     DisruptionType,
@@ -181,6 +182,7 @@ def test_coordinator_invalid_impact_raises():
 def test_orchestrator_pipeline_end_to_end():
     """Tests the full orchestrator pipeline with real cascade impact and coordinator."""
     orchestrator = FreightFlowOrchestrator()
+    orchestrator.llm_explainer = LLMExplainer(api_key="")  # Use deterministic heuristic fallback for tests
     disruption = DisruptionEvent(
         event_id="EVT-JNPT-TEST",
         event_type=DisruptionType.PORT_CONGESTION,

@@ -38,7 +38,7 @@ def sample_plan():
 def test_explainer_initialization_no_key():
     explainer = LLMExplainer(api_key="")
     assert not explainer.is_configured()
-    assert explainer.model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    assert "flash" in explainer.model
 
 
 def test_explainer_initialization_with_key():

@@ -46,7 +46,7 @@ def render_human_approval():
 
     # Initialize LLM Explainer with active session configuration
     api_key = st.session_state.get("gemini_api_key")
-    model = st.session_state.get("gemini_model", "gemini-2.5-flash")
+    model = st.session_state.get("gemini_model", "gemini-3.8-flash")
     explainer = LLMExplainer(api_key=api_key, model=model)
 
     # Cache explanation in session state per plan category to avoid repetitive API latency
