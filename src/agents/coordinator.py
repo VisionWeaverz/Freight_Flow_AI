@@ -313,16 +313,17 @@ class CentralCoordinator:
                         "constraints_met": off.constraints_met,
                     })
             elif agent_role == "WAREHOUSE":
+                is_r3 = "R3" in slot_id
                 is_morning = "MORNING" in slot_id
-                key = "MORNING" if is_morning else "OVERTIME"
+                key = "RESERVED" if is_r3 else ("MORNING" if is_morning else "OVERTIME")
                 if key not in seen_types:
                     seen_types.add(key)
                     options.append({
                         "slot_id": slot_id,
-                        "type": key,
-                        "cost": off.cost_inr,
-                        "reliability": off.reliability_score,
-                        "added_delay": 14.0 if is_morning else delay_hrs,
+                        "type": "MORNING" if (is_morning or is_r3) else "OVERTIME",
+                        "cost": off.cost_inr + (600.0 if is_r3 else 0.0),
+                        "reliability": min(0.99, off.reliability_score + (0.05 if is_r3 else 0.0)),
+                        "added_delay": 14.0 if (is_morning or is_r3) else delay_hrs,
                         "constraints_met": off.constraints_met,
                     })
 
