@@ -15,6 +15,7 @@ from src.dashboard.components.plan_comparator import render_plan_comparator
 from src.dashboard.components.human_approval import render_human_approval
 from src.dashboard.components.timeline_view import render_timeline_view
 from src.dashboard.components.metrics_view import render_metrics_view
+from src.dashboard.components.map_simulation import render_map_simulation
 from src.dashboard.components.rate_card_uploader import render_rate_card_manager, render_sidebar_tariff_card
 from src.database.rate_manager import is_custom_pricing_active
 from src.common.config import GEMINI_API_KEY, GEMINI_MODEL, save_gemini_api_key
@@ -352,10 +353,11 @@ def main():
     render_top_header()
 
     # 3. Modern Top Navigation Bar (Centered 3 Tabs)
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📡 1. Live Operations & Cascade Impact",
         "🤝 2. Multi-Agent Recovery & Approval",
-        "📈 3. Simulation Benchmarks (50 Runs)"
+        "📈 3. Simulation Benchmarks (50 Runs)",
+        "🗺️ 4. Geographic Simulation",
     ])
 
     with tab1:
@@ -370,6 +372,9 @@ def main():
 
     with tab3:
         render_metrics_view()
+
+    with tab4:
+        render_map_simulation()
 
 
 if __name__ == "__main__":
