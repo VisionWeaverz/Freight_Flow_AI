@@ -70,6 +70,33 @@ def test_heuristic_explanation_all_categories(sample_disruption, sample_plan):
         assert "why choose this" in exp.lower()
 
 
+def test_heuristic_explanation_traffic_and_warehouse(sample_plan):
+    explainer = LLMExplainer(api_key="")
+    traffic_event = DisruptionEvent(
+        event_id="EVT-TRF",
+        event_type=DisruptionType.TRAFFIC_INCIDENT,
+        source_entity_id="SHP-1001",
+        severity_level=0.6,
+        delay_hours=3.0,
+        description="Expressway traffic congestion"
+    )
+    exp_traffic = explainer.explain_plan(traffic_event, sample_plan)
+    assert "Expressway Traffic Congestion" in exp_traffic or "highway" in exp_traffic.lower()
+    assert "Port clearance finished on schedule" in exp_traffic or "highway delay" in exp_traffic
+
+    whs_event = DisruptionEvent(
+        event_id="EVT-WHS",
+        event_type=DisruptionType.WAREHOUSE_BOTTLENECK,
+        source_entity_id="SHP-1001",
+        severity_level=0.7,
+        delay_hours=4.0,
+        description="Warehouse dock bottleneck"
+    )
+    exp_whs = explainer.explain_plan(whs_event, sample_plan)
+    assert "Warehouse Bottleneck" in exp_whs
+    assert "dock congestion" in exp_whs.lower() or "overtime" in exp_whs.lower()
+
+
 def test_custom_question_fallback(sample_disruption, sample_plan):
     explainer = LLMExplainer(api_key="")
     answer = explainer.ask_custom_question(sample_disruption, sample_plan, "What about driver idle cost?")

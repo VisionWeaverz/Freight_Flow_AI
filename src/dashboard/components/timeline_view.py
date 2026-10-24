@@ -27,15 +27,16 @@ def render_timeline_view():
     cost_saved = max(0.0, financial_risk - plan.total_cost_inr)
 
     # Dynamic Disrupted Cascade descriptions based on disruption type
-    if disruption_type == "TRUCK_BREAKDOWN":
-        port_disrupted = "08:00 AM - 10:00 AM (ON TIME - Cleared)"
-        truck_disrupted = f"10:00 AM Pickup ➔ Stranded on Highway (+{delay_hours:.1f}h Breakdown - BREACHED)"
-        whs_disrupted = f"Missed 01:30 PM Bay Window by +{delay_hours:.1f}h (Dock Slot Forfeited - BREACHED)"
+    if disruption_type in ("TRUCK_BREAKDOWN", "TRAFFIC_INCIDENT"):
+        incident_name = "Expressway Traffic Jam" if disruption_type == "TRAFFIC_INCIDENT" else "Highway Mechanical Breakdown"
+        port_disrupted = "08:00 AM - 10:00 AM (ON TIME - Cleared on Schedule)"
+        truck_disrupted = f"10:00 AM Pickup ➔ Stranded on Highway (+{delay_hours:.1f}h {incident_name} - BREACHED)"
+        whs_disrupted = f"Missed 01:30 PM Grace Window by +{delay_hours:.1f}h (Dock Slot Forfeited - BREACHED)"
         cust_disrupted = f"Delayed by +{delay_hours:.1f}h past 05:00 PM (Late SLA Penalties Accruing - BREACHED)"
     elif disruption_type == "WAREHOUSE_BOTTLENECK":
-        port_disrupted = "08:00 AM - 10:00 AM (ON TIME - Cleared)"
-        truck_disrupted = "10:00 AM - 01:30 PM (ON TIME - Arrived at Warehouse)"
-        whs_disrupted = f"Turnaround Stalled by +{delay_hours:.1f}h (+{delay_hours:.1f}h Overtime Wage Surcharge - BREACHED)"
+        port_disrupted = "08:00 AM - 10:00 AM (ON TIME - Cleared on Schedule)"
+        truck_disrupted = "10:00 AM - 01:30 PM (ON TIME - Arrived at Warehouse Gate)"
+        whs_disrupted = f"Dock Intake Stalled by +{delay_hours:.1f}h (+{delay_hours:.1f}h Overtime Wage Surcharge - BREACHED)"
         cust_disrupted = f"Delayed by +{delay_hours:.1f}h (Contract Delivery Window Breached)"
     else:  # PORT_CONGESTION or VESSEL_DELAY
         port_disrupted = f"08:00 AM + {delay_hours:.1f}h ➔ Cleared 12:00 PM (+{delay_hours:.1f}h Berth Congestion)"
@@ -43,20 +44,32 @@ def render_timeline_view():
         whs_disrupted = f"Arrived 03:30 PM, Missed 01:30 PM Grace Window (Dock Slot Forfeited - BREACHED)"
         cust_disrupted = f"Projected Arrival 07:00 PM (+{delay_hours:.1f}h Past SLA - ₹ Penalties Compounding)"
 
-    # Dynamic Recovered milestone descriptions based on plan category
+    # Dynamic Recovered milestone descriptions based on plan category & disruption origin
+    is_road_disruption = disruption_type in ("TRUCK_BREAKDOWN", "TRAFFIC_INCIDENT")
+    is_whs_disruption = disruption_type == "WAREHOUSE_BOTTLENECK"
+
     if cat == PlanCategory.FASTEST:
-        port_recovered = f"⚡ 08:30 AM - 09:30 AM (Priority Crane Handling: {port_slot})"
-        truck_recovered = f"⚡ 09:30 AM (Emergency Backup Fleet Dispatched: {carrier_slot} - 0h Idle)"
+        port_recovered = "08:00 AM - 10:00 AM (ON TIME - Nominal Clearance)" if (is_road_disruption or is_whs_disruption) else f"⚡ 08:30 AM - 09:30 AM (Priority Crane Handling: {port_slot})"
+        if is_whs_disruption:
+            truck_recovered = "10:00 AM - 01:30 PM (ON TIME - Nominal Highway Transit)"
+        else:
+            truck_recovered = f"⚡ 09:30 AM (Emergency Relief Fleet Dispatched: {carrier_slot} - 0h Idle)"
         whs_recovered = f"⚡ 01:30 PM (Expedited Intake Bay Reserved: {whs_slot})"
         cust_recovered = "⚡ 04:30 PM Delivery Commitment (ON TIME - 30m Ahead of SLA Window!)"
     elif cat == PlanCategory.CHEAPEST:
-        port_recovered = f"🟢 10:00 AM - 12:00 PM (Absorbs Delay at Standard Berth: {port_slot})"
-        truck_recovered = f"🟢 12:00 PM (Driver Realigned at Zero Surcharge Standby: {carrier_slot})"
+        port_recovered = "08:00 AM - 10:00 AM (ON TIME - Nominal Clearance)" if (is_road_disruption or is_whs_disruption) else f"🟢 10:00 AM - 12:00 PM (Absorbs Delay at Standard Berth: {port_slot})"
+        if is_whs_disruption:
+            truck_recovered = "10:00 AM - 01:30 PM (ON TIME - Nominal Highway Transit)"
+        else:
+            truck_recovered = f"🟢 12:00 PM (Driver Realigned at Standby: {carrier_slot} - ₹0 Replacement Surcharge)"
         whs_recovered = f"🟢 04:00 PM (Shift Rescheduled to Off-Peak Window: {whs_slot} - ₹0 Forfeit)"
         cust_recovered = f"🟢 Arrival +{plan.total_delay_hours:.1f}h Offset (Saves ₹{cost_saved:,.0f} vs Demurrage Exposure)"
     else:  # SAFEST
-        port_recovered = f"🛡️ 09:00 AM - 10:30 AM (Buffer Protected Berth Allocation: {port_slot})"
-        truck_recovered = f"🛡️ 10:30 AM (Reserved Transit Corridor: {carrier_slot} - Zero Congestion Risk)"
+        port_recovered = "08:00 AM - 10:00 AM (ON TIME - Nominal Clearance)" if (is_road_disruption or is_whs_disruption) else f"🛡️ 09:00 AM - 10:30 AM (Buffer Protected Berth Allocation: {port_slot})"
+        if is_whs_disruption:
+            truck_recovered = "10:00 AM - 01:30 PM (ON TIME - Nominal Highway Transit)"
+        else:
+            truck_recovered = f"🛡️ 10:30 AM (Protected Arterial Detour: {carrier_slot} - Dynamic Routing)"
         whs_recovered = f"🛡️ 02:30 PM (Protected Dock Slot Reserved: {whs_slot} - 100% Bay Clearance)"
         cust_recovered = f"🛡️ 05:00 PM Guaranteed Delivery (Exact SLA Met with {plan.reliability_score*100:.0f}% Buffer Reliability)"
 

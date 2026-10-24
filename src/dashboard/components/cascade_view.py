@@ -82,18 +82,38 @@ def render_cascade_view():
     col_input1, col_input2, col_input3, col_btn = st.columns([2, 1.2, 1.2, 1.2])
 
     with col_input1:
+        shipment_options = [
+            "SHP-1005 (Flagship AutoParts Demo)",
+            "SHP-1001 (Electronics Whitefield)",
+            "SHP-1002 (Textiles Tirupur)",
+            "SHP-1003 (Auto Components Pune)",
+            "SHP-1004 (Pharma Hyderabad)"
+        ]
+        cur_shp = st.session_state.get("cascade_shipment_id", shipment_options[0])
+        idx_shp = shipment_options.index(cur_shp) if cur_shp in shipment_options else 0
         shipment_id = st.selectbox(
             "Consignment ID:",
-            ["SHP-1005 (Flagship AutoParts Demo)", "SHP-1001 (Electronics Whitefield)", "SHP-1002 (Textiles Tirupur)", "SHP-1003 (Auto Components Pune)", "SHP-1004 (Pharma Hyderabad)"],
-            index=0
+            shipment_options,
+            index=idx_shp,
+            key="cascade_shipment_id"
         )
         actual_shp_id = shipment_id.split(" ")[0]
         
     with col_input2:
+        disruption_options = [
+            "PORT_CONGESTION",
+            "VESSEL_DELAY",
+            "TRUCK_BREAKDOWN",
+            "TRAFFIC_INCIDENT",
+            "WAREHOUSE_BOTTLENECK"
+        ]
+        cur_dt = st.session_state.get("cascade_disruption_type", disruption_options[0])
+        idx_dt = disruption_options.index(cur_dt) if cur_dt in disruption_options else 0
         disruption_type = st.selectbox(
             "Disruption Type:",
-            ["PORT_CONGESTION", "VESSEL_DELAY", "TRUCK_BREAKDOWN", "TRAFFIC_INCIDENT", "WAREHOUSE_BOTTLENECK"],
-            index=0
+            disruption_options,
+            index=idx_dt,
+            key="cascade_disruption_type"
         )
 
     with col_input3:

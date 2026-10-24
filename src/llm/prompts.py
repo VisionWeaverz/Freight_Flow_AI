@@ -18,7 +18,7 @@ Selected Recovery Plan: {plan_category} Plan
 Format your output EXACTLY as follows:
 
 #### 🎯 Why {plan_category} Plan & Decision Rationale
-- **Decision Taken**: 1-2 sentences on how the multi-agent decision was made across port, carrier, and warehouse resources.
+- **Decision Taken**: 1-2 sentences explaining how the multi-agent decision directly resolved the active disruption at its source (e.g., if highway traffic or truck breakdown, focus on carrier rerouting/replacement fleet and warehouse intake sync; if warehouse dock bottleneck, focus on dock overtime vs morning bay; if port/vessel delay, focus on berth crane and gate sync). Do NOT mention port delays if the port was nominal and cleared on time.
 - **Why Choose This**: 1-2 sentences on the exact operational/contractual conditions when the supervisor should choose this plan.
 
 #### ✅ Pros
