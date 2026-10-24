@@ -461,8 +461,8 @@ class LLMExplainer:
                         model=m,
                         contents=prompt,
                         config=types.GenerateContentConfig(
-                            temperature=0.3,
-                            max_output_tokens=1500
+                            temperature=0.7,
+                            max_output_tokens=2048
                         )
                     )
                     if resp and resp.text:
@@ -481,12 +481,12 @@ class LLMExplainer:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={self.api_key}"
                     payload = {
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1500}
+                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}
                     }
                     data = json.dumps(payload).encode("utf-8")
                     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
 
-                    with urllib.request.urlopen(req, timeout=7) as response:
+                    with urllib.request.urlopen(req, timeout=15) as response:
                         result = json.loads(response.read().decode("utf-8"))
                         candidates = result.get("candidates", [])
                         if candidates:
@@ -503,13 +503,13 @@ class LLMExplainer:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(_execute)
             try:
-                return future.result(timeout=10.0)
+                return future.result(timeout=20.0)
             except concurrent.futures.TimeoutError:
-                logger.warning("Gemini raw call timed out after 10.0s; activating resilient heuristic fallback.")
+                logger.warning("Gemini raw call timed out after 20.0s; activating resilient heuristic fallback.")
                 return None
 
     def _call_gemini_explanation(self, disruption: DisruptionEvent, plan: RecoveryPlan) -> Optional[str]:
-        """Calls Gemini to explain recovery plan trade-offs in a concise, structured pros/cons format."""
+        """Calls Gemini to deliver a natural, expressive, and unconstrained operational briefing for the recovery plan."""
         carrier_human = human_carrier_label(plan.carrier_slot_id, plan.category)
         dock_human = human_warehouse_label(plan.warehouse_dock_id or plan.warehouse_slot_id)
         port_human = human_port_label(plan.port_slot_id)
